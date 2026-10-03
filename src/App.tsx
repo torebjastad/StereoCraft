@@ -4,7 +4,9 @@ import {
   ShapeType,
   StereogramConfig,
   PatternType,
+  EaseOfView,
 } from './types/index.ts';
+import { getAutotuneOptics } from './core/stereogramEngine.ts';
 import { Header } from './components/Header.tsx';
 import { ShapePalette } from './components/ShapePalette.tsx';
 import { ShapeInspector } from './components/ShapeInspector.tsx';
@@ -103,29 +105,71 @@ export function scaleShapesForResolutionChange(
 
 const getInitialUrlState = () => {
   if (typeof window === 'undefined') {
-    return { mode: 'studio' as const, width: 800, height: 600, period: 100, disparity: 18, grain: 2, pattern: 'sand' as const };
+    return {
+      mode: 'studio' as const,
+      width: 1200,
+      height: 900,
+      period: 95,
+      disparity: 18,
+      grain: 2,
+      pattern: 'sand' as const,
+      isAutoFit: true,
+      easeOfView: 'easy' as const,
+    };
   }
   const params = new URLSearchParams(window.location.search);
   const mode = params.get('mode') === 'labyrinth' ? ('labyrinth' as const) : ('studio' as const);
   const patternParam = params.get('pattern') as PatternType | null;
   const pattern: PatternType = patternParam || 'sand';
+  const easeParam = params.get('ease') as EaseOfView | null;
+  const easeOfView: EaseOfView =
+    easeParam === 'easy' || easeParam === 'medium' || easeParam === 'hard' ? easeParam : 'easy';
   const res = params.get('res');
   if (res === '4k') {
-    return { mode, width: 3840, height: 2160, period: 180, disparity: mode === 'labyrinth' ? 15 : 24, grain: 3, pattern };
+    const optics = getAutotuneOptics(3840, easeOfView);
+    return { mode, width: 3840, height: 2160, period: optics.patternPeriod, disparity: mode === 'labyrinth' ? 15 : optics.maxDisparity, grain: 3, pattern, isAutoFit: false, easeOfView };
   } else if (res === '2k') {
-    return { mode, width: 2560, height: 1440, period: 140, disparity: mode === 'labyrinth' ? 15 : 20, grain: 3, pattern };
+    const optics = getAutotuneOptics(2560, easeOfView);
+    return { mode, width: 2560, height: 1440, period: optics.patternPeriod, disparity: mode === 'labyrinth' ? 15 : optics.maxDisparity, grain: 3, pattern, isAutoFit: false, easeOfView };
   } else if (res === '1080p') {
-    return { mode, width: 1920, height: 1080, period: 120, disparity: mode === 'labyrinth' ? 15 : 18, grain: 2, pattern };
+    const optics = getAutotuneOptics(1920, easeOfView);
+    return { mode, width: 1920, height: 1080, period: optics.patternPeriod, disparity: mode === 'labyrinth' ? 15 : optics.maxDisparity, grain: 2, pattern, isAutoFit: false, easeOfView };
   } else if (res === 'hd') {
-    return { mode, width: 1200, height: 900, period: 100, disparity: mode === 'labyrinth' ? 15 : 16, grain: 2, pattern };
+    const optics = getAutotuneOptics(1200, easeOfView);
+    return { mode, width: 1200, height: 900, period: optics.patternPeriod, disparity: mode === 'labyrinth' ? 15 : optics.maxDisparity, grain: 2, pattern, isAutoFit: false, easeOfView };
+  } else if (res === '800x600') {
+    const optics = getAutotuneOptics(800, easeOfView);
+    return { mode, width: 800, height: 600, period: optics.patternPeriod, disparity: mode === 'labyrinth' ? 15 : optics.maxDisparity, grain: 2, pattern, isAutoFit: false, easeOfView };
   }
-  return { mode, width: 800, height: 600, period: 100, disparity: mode === 'labyrinth' ? 15 : 18, grain: 2, pattern };
+
+  // Default: Fit available area!
+  const leftW = 320;
+  const rightW = 288;
+  const topH = 64 + 48;
+  const paddingX = 32;
+  const paddingY = 56;
+  const availW = Math.max(480, Math.floor((window.innerWidth - leftW - rightW - paddingX) / 10) * 10);
+  const availH = Math.max(360, Math.floor((window.innerHeight - topH - paddingY) / 10) * 10);
+  const optics = getAutotuneOptics(availW, easeOfView);
+
+  return {
+    mode,
+    width: availW,
+    height: availH,
+    period: mode === 'labyrinth' ? 100 : optics.patternPeriod,
+    disparity: mode === 'labyrinth' ? 15 : optics.maxDisparity,
+    grain: 2,
+    pattern,
+    isAutoFit: true,
+    easeOfView,
+  };
 };
 
 const initialUrlState = getInitialUrlState();
 
 export const App: React.FC = () => {
   const [appMode, setAppMode] = useState<'studio' | 'labyrinth'>(initialUrlState.mode);
+  const [easeOfView, setEaseOfView] = useState<EaseOfView>(initialUrlState.easeOfView);
   const [shapes, setShapes] = useState<ShapeObject[]>(() => {
     if (initialUrlState.width === 800 && initialUrlState.height === 600) {
       return INITIAL_SHAPES;
@@ -148,6 +192,7 @@ export const App: React.FC = () => {
     showGuideDots: true,
     guideDotColor: '#6366f1',
     customImageData: null,
+    easeOfView: initialUrlState.easeOfView,
   });
 
   const [dimensions, setDimensions] = useState<{ width: number; height: number }>({
@@ -158,7 +203,7 @@ export const App: React.FC = () => {
   dimensionsRef.current = dimensions;
 
   const [isStudioFullscreen, setIsStudioFullscreen] = useState<boolean>(false);
-  const [isAutoFit, setIsAutoFit] = useState<boolean>(false);
+  const [isAutoFit, setIsAutoFit] = useState<boolean>(initialUrlState.isAutoFit);
   const savedDimensionsRef = useRef<{ width: number; height: number } | null>(null);
   const studioContainerRef = useRef<HTMLDivElement>(null);
 
@@ -184,6 +229,20 @@ export const App: React.FC = () => {
       handleChangeResolution(newWidth, newHeight);
     },
     [handleChangeResolution]
+  );
+
+  const handleSelectEaseOfView = useCallback(
+    (newEase: EaseOfView) => {
+      setEaseOfView(newEase);
+      const optics = getAutotuneOptics(dimensionsRef.current.width, newEase);
+      setConfig((prev) => ({
+        ...prev,
+        easeOfView: newEase,
+        patternPeriod: appMode === 'labyrinth' ? 100 : optics.patternPeriod,
+        maxDisparity: appMode === 'labyrinth' ? 15 : optics.maxDisparity,
+      }));
+    },
+    [appMode]
   );
 
   // Computes the maximum available viewport area for the stereogram based on screen & GUI margins
@@ -215,18 +274,15 @@ export const App: React.FC = () => {
 
       handleChangeResolution(finalW, finalH);
 
-      // Auto-tune period and disparity to optimal eye-divergence
-      const recPeriod = Math.max(90, Math.min(260, Math.round(finalW * 0.08 + 35)));
-      const recDisparity = Math.max(16, Math.min(48, Math.round(recPeriod * 0.18)));
-      const recGrain = finalW >= 2400 ? 3 : 2;
+      // Auto-tune period and disparity to optimal eye-divergence using active easeOfView, NEVER touching grainSize
+      const optics = getAutotuneOptics(finalW, easeOfView);
       setConfig((prev) => ({
         ...prev,
-        patternPeriod: recPeriod,
-        maxDisparity: recDisparity,
-        grainSize: recGrain,
+        patternPeriod: appMode === 'labyrinth' ? 100 : optics.patternPeriod,
+        maxDisparity: appMode === 'labyrinth' ? 15 : optics.maxDisparity,
       }));
     },
-    [calculateAvailableArea, handleChangeResolution]
+    [calculateAvailableArea, handleChangeResolution, easeOfView, appMode]
   );
 
   // Studio Fullscreen toggle
@@ -242,15 +298,12 @@ export const App: React.FC = () => {
         const fullH = window.innerHeight;
         handleChangeResolution(fullW, fullH);
 
-        // Optimize optics for fullscreen width
-        const recPeriod = Math.max(100, Math.min(260, Math.round(fullW * 0.08 + 35)));
-        const recDisparity = Math.max(18, Math.min(48, Math.round(recPeriod * 0.18)));
-        const recGrain = fullW >= 2400 ? 3 : 2;
+        // Optimize optics for fullscreen width using active easeOfView, WITHOUT altering grainSize
+        const optics = getAutotuneOptics(fullW, easeOfView);
         setConfig((prev) => ({
           ...prev,
-          patternPeriod: recPeriod,
-          maxDisparity: recDisparity,
-          grainSize: recGrain,
+          patternPeriod: optics.patternPeriod,
+          maxDisparity: optics.maxDisparity,
         }));
       } else {
         if (document.fullscreenElement && document.exitFullscreen) {
@@ -262,12 +315,18 @@ export const App: React.FC = () => {
             savedDimensionsRef.current.width,
             savedDimensionsRef.current.height
           );
+          const optics = getAutotuneOptics(savedDimensionsRef.current.width, easeOfView);
+          setConfig((prev) => ({
+            ...prev,
+            patternPeriod: optics.patternPeriod,
+            maxDisparity: optics.maxDisparity,
+          }));
         }
       }
     } catch {
       setIsStudioFullscreen((prev) => !prev);
     }
-  }, [isStudioFullscreen, handleChangeResolution]);
+  }, [isStudioFullscreen, handleChangeResolution, easeOfView]);
 
   // Sync with document fullscreenchange events (e.g. user pressing Esc)
   useEffect(() => {
@@ -280,12 +339,18 @@ export const App: React.FC = () => {
             savedDimensionsRef.current.width,
             savedDimensionsRef.current.height
           );
+          const optics = getAutotuneOptics(savedDimensionsRef.current.width, easeOfView);
+          setConfig((prev) => ({
+            ...prev,
+            patternPeriod: optics.patternPeriod,
+            maxDisparity: optics.maxDisparity,
+          }));
         }
       }
     };
     document.addEventListener('fullscreenchange', onFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
-  }, [isStudioFullscreen, handleChangeResolution]);
+  }, [isStudioFullscreen, handleChangeResolution, easeOfView]);
 
   // Track window resizing and re-adapt when in Auto-Fit mode
   useEffect(() => {
@@ -735,6 +800,8 @@ export const App: React.FC = () => {
             onFitToViewport={handleFitToViewport}
             isAutoFit={isAutoFit}
             onChangeConfig={(upd) => setConfig((prev) => ({ ...prev, ...upd }))}
+            easeOfView={easeOfView}
+            onSelectEaseOfView={handleSelectEaseOfView}
           />
 
           {/* Right Column: Optics, Disparity, Resolution & Engine Controls */}
@@ -748,6 +815,8 @@ export const App: React.FC = () => {
               onFitToViewport={() => handleFitToViewport()}
               isAutoFit={isAutoFit}
               availableArea={availableArea}
+              easeOfView={easeOfView}
+              onSelectEaseOfView={handleSelectEaseOfView}
             />
           )}
         </main>
@@ -767,6 +836,8 @@ export const App: React.FC = () => {
             canvasWidth={dimensions.width}
             canvasHeight={dimensions.height}
             onChangeResolution={handleChangeFixedResolution}
+            easeOfView={easeOfView}
+            onSelectEaseOfView={handleSelectEaseOfView}
           />
         </main>
       )}

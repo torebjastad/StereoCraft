@@ -2,7 +2,9 @@ import React, { useRef } from 'react';
 import {
   StereogramConfig,
   PatternType,
+  EaseOfView,
 } from '../types/index.ts';
+import { getAutotuneOptics } from '../core/stereogramEngine.ts';
 import {
   Palette,
   Eye,
@@ -10,7 +12,6 @@ import {
   Upload,
   CheckCircle2,
   Info,
-  Sparkles,
   Maximize,
 } from 'lucide-react';
 
@@ -23,6 +24,8 @@ interface SettingsPanelProps {
   onFitToViewport?: () => void;
   isAutoFit?: boolean;
   availableArea?: { width: number; height: number };
+  easeOfView?: EaseOfView;
+  onSelectEaseOfView?: (ease: EaseOfView) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -34,6 +37,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onFitToViewport,
   isAutoFit,
   availableArea,
+  easeOfView = 'easy',
+  onSelectEaseOfView,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -137,38 +142,68 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <Sliders className="w-3.5 h-3.5 text-indigo-400" />
             <span>Optics & Disparity</span>
           </div>
-          <button
-            onClick={() => {
-              const preset = [
-                { w: 800, h: 600, period: 100, disparity: 18, grain: 2 },
-                { w: 1200, h: 900, period: 130, disparity: 24, grain: 2 },
-                { w: 1920, h: 1080, period: 160, disparity: 30, grain: 2 },
-                { w: 2560, h: 1440, period: 200, disparity: 38, grain: 3 },
-                { w: 3840, h: 2160, period: 240, disparity: 46, grain: 3 },
-              ].find((p) => p.w === canvasWidth && p.h === canvasHeight);
-              if (preset) {
-                onChangeConfig({
-                  patternPeriod: preset.period,
-                  maxDisparity: preset.disparity,
-                  grainSize: preset.grain,
-                });
-              } else {
-                const recPeriod = Math.max(90, Math.min(300, Math.round(canvasWidth * 0.075 + 45)));
-                const recDisparity = Math.max(16, Math.min(64, Math.round(recPeriod * 0.19)));
-                const recGrain = canvasWidth >= 2560 ? 3 : 2;
-                onChangeConfig({
-                  patternPeriod: recPeriod,
-                  maxDisparity: recDisparity,
-                  grainSize: recGrain,
-                });
-              }
-            }}
-            className="flex items-center gap-1 text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 px-2 py-0.5 rounded-lg border border-indigo-500/30 transition capitalize cursor-pointer"
-            title="Auto-tune period and disparity to optimal eye-divergence for this resolution"
-          >
-            <Sparkles className="w-3 h-3 text-indigo-400" />
-            <span>Auto-Tune</span>
-          </button>
+        </div>
+
+        {/* Ease of View (Autotune Selector) */}
+        <div className="space-y-2 p-3 rounded-xl bg-slate-800/40 border border-slate-700/60">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-200">Ease of View</span>
+              <div className="relative group">
+                <Info className="w-3.5 h-3.5 text-slate-400 hover:text-indigo-400 cursor-pointer transition" />
+                <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-64 p-3 rounded-xl bg-slate-900 border border-slate-700 text-[11px] text-slate-300 shadow-2xl z-50 pointer-events-none leading-relaxed">
+                  <strong className="text-white block mb-1">Viewing Ease vs. 3D Immersion:</strong>
+                  • <span className="text-emerald-400 font-semibold">Easy (0.5×)</span>: Half period & disparity. Eyes diverge effortlessly, snapping into 3D almost immediately with minimal eye strain.<br />
+                  • <span className="text-indigo-400 font-semibold">Medium (0.75×)</span>: Balanced depth separation and comfortable convergence.<br />
+                  • <span className="text-rose-400 font-semibold">Hard (1.0×)</span>: Full scale. Generates deep, dramatic 3D immersion and spatial depth, but requires stronger convergence control.
+                </div>
+              </div>
+            </div>
+            <span className="text-[10px] font-mono font-bold text-indigo-400 capitalize">
+              {easeOfView} mode
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-1.5 p-1 rounded-lg bg-slate-900/80 border border-slate-800">
+            <button
+              onClick={() => onSelectEaseOfView?.('easy')}
+              className={`py-1.5 px-1.5 rounded-md text-xs font-bold transition cursor-pointer text-center ${
+                easeOfView === 'easy'
+                  ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30 ring-1 ring-emerald-400/40'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+              title="Easy: 0.5x period & disparity. Effortless 3D lock, minimal strain"
+            >
+              <div>Easy</div>
+              <div className="text-[9px] font-normal opacity-80">Quick Lock</div>
+            </button>
+
+            <button
+              onClick={() => onSelectEaseOfView?.('medium')}
+              className={`py-1.5 px-1.5 rounded-md text-xs font-bold transition cursor-pointer text-center ${
+                easeOfView === 'medium'
+                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 ring-1 ring-indigo-400/40'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+              title="Medium: 0.75x period & disparity. Balanced depth and comfort"
+            >
+              <div>Medium</div>
+              <div className="text-[9px] font-normal opacity-80">Balanced</div>
+            </button>
+
+            <button
+              onClick={() => onSelectEaseOfView?.('hard')}
+              className={`py-1.5 px-1.5 rounded-md text-xs font-bold transition cursor-pointer text-center ${
+                easeOfView === 'hard'
+                  ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/30 ring-1 ring-rose-400/40'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+              title="Hard: 1.0x period & disparity. Maximum deep 3D immersion"
+            >
+              <div>Hard</div>
+              <div className="text-[9px] font-normal opacity-80">Deep 3D</div>
+            </button>
+          </div>
         </div>
 
         {/* Repetition Period (S) */}
@@ -353,10 +388,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 key={res.label}
                 onClick={() => {
                   onChangeResolution(res.w, res.h);
+                  const optics = getAutotuneOptics(res.w, easeOfView);
                   onChangeConfig({
-                    patternPeriod: res.period,
-                    maxDisparity: res.disparity,
-                    grainSize: res.grain,
+                    patternPeriod: optics.patternPeriod,
+                    maxDisparity: optics.maxDisparity,
                   });
                 }}
                 className={`py-2 px-2 rounded-xl border text-center transition ${

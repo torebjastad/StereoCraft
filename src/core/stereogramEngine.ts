@@ -1,4 +1,4 @@
-import { StereogramConfig, PatternType } from '../types/index.ts';
+import { StereogramConfig, PatternType, EaseOfView } from '../types/index.ts';
 
 // PRNG for consistent, reproducible procedural patterns
 function pseudoRandom(x: number, y: number, seed: number = 1337): number {
@@ -439,4 +439,33 @@ export function drawGuideDots(
       }
     }
   }
+}
+
+/**
+ * Calculates optimal stereogram optics (patternPeriod and maxDisparity)
+ * tailored to canvas width and viewing ease:
+ * - 'easy': 0.5x of base autotune (quickest convergence, minimal eye effort)
+ * - 'medium': 0.75x of base autotune (balanced depth and comfort)
+ * - 'hard': 1.0x of base autotune (full maximum 3D immersion and depth separation)
+ */
+export function getAutotuneOptics(
+  width: number,
+  ease: EaseOfView = 'easy'
+): { patternPeriod: number; maxDisparity: number } {
+  const basePeriod = Math.max(90, Math.min(280, Math.round(width * 0.075 + 45)));
+  const baseDisparity = Math.max(16, Math.min(52, Math.round(basePeriod * 0.185)));
+
+  let factor = 0.5;
+  if (ease === 'easy') {
+    factor = 0.5;
+  } else if (ease === 'medium') {
+    factor = 0.75;
+  } else if (ease === 'hard') {
+    factor = 1.0;
+  }
+
+  const patternPeriod = Math.max(40, Math.round(basePeriod * factor));
+  const maxDisparity = Math.max(6, Math.round(baseDisparity * factor));
+
+  return { patternPeriod, maxDisparity };
 }

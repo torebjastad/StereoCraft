@@ -3,6 +3,7 @@ import {
   StereogramConfig,
   ShapeObject,
   PatternType,
+  EaseOfView,
 } from '../types/index.ts';
 import { renderDepthMap } from '../core/depthRenderer.ts';
 import { generateStereogram, createImageDataHelper } from '../core/stereogramEngine.ts';
@@ -36,6 +37,8 @@ interface StereogramViewportProps {
   onFitToViewport?: (width?: number, height?: number) => void;
   isAutoFit?: boolean;
   onChangeConfig?: (updated: Partial<StereogramConfig>) => void;
+  easeOfView?: EaseOfView;
+  onSelectEaseOfView?: (ease: EaseOfView) => void;
 }
 
 export type ViewTab = 'stereogram' | 'stage' | 'depth' | 'split' | '3d-mesh';
@@ -55,6 +58,8 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
   onFitToViewport,
   isAutoFit,
   onChangeConfig,
+  easeOfView = 'easy',
+  onSelectEaseOfView,
 }) => {
   const [activeTab, setActiveTab] = useState<ViewTab>('stereogram');
   const [peekAmount, setPeekAmount] = useState<number>(0); // 0 = 100% stereogram, 1 = 100% depth map
@@ -319,6 +324,30 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
             </button>
           )}
 
+          {/* Ease of View Selector in Fullscreen */}
+          {onSelectEaseOfView && (
+            <div className="flex items-center p-0.5 rounded-lg bg-slate-900/80 border border-slate-800 shrink-0">
+              {(['easy', 'medium', 'hard'] as EaseOfView[]).map((e) => (
+                <button
+                  key={e}
+                  onClick={() => onSelectEaseOfView(e)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer capitalize ${
+                    easeOfView === e
+                      ? e === 'easy'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : e === 'medium'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'bg-rose-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title={`${e.toUpperCase()} Viewing Mode (${e === 'easy' ? '0.5x' : e === 'medium' ? '0.75x' : '1.0x'})`}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="h-4 w-px bg-slate-700 shrink-0" />
 
           {/* Resolution Badge in Fullscreen */}
@@ -409,13 +438,17 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
           {/* Right Toolbar Controls */}
           <div className="flex items-center gap-2.5">
             {/* Status Indicators */}
-            <div className="hidden lg:flex items-center gap-3 text-xs text-slate-400">
+            <div className="hidden lg:flex items-center gap-2.5 text-xs text-slate-400">
               <span className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400" />
                 <span>Period: <strong className="text-slate-200">{config.patternPeriod}px</strong></span>
               </span>
               <span className="text-slate-600">•</span>
               <span>Max Disparity: <strong className="text-slate-200">{config.maxDisparity}px</strong></span>
+              <span className="text-slate-600">•</span>
+              <span className="capitalize font-mono text-[11px] font-bold text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">
+                {easeOfView}
+              </span>
             </div>
 
             <div className="h-4 w-px bg-slate-800 hidden sm:block" />

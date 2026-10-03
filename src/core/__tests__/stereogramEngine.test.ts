@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateStereogram, renderStereogramRows, samplePatternColor } from '../stereogramEngine.ts';
+import { generateStereogram, renderStereogramRows, samplePatternColor, getAutotuneOptics } from '../stereogramEngine.ts';
 import { renderDepthMap } from '../depthRenderer.ts';
 import { StereogramConfig, ShapeObject } from '../../types/index.ts';
 
@@ -326,6 +326,36 @@ describe('stereogramEngine', () => {
       // With gap-filling, step differences between adjacent pixels in smooth texture are small (< 60)
       expect(diffR).toBeLessThan(75);
     }
+  });
+
+  describe('getAutotuneOptics', () => {
+    it('calculates easy mode as half of base autotune', () => {
+      const hard = getAutotuneOptics(1200, 'hard');
+      const easy = getAutotuneOptics(1200, 'easy');
+
+      expect(easy.patternPeriod).toBe(Math.max(40, Math.round(hard.patternPeriod * 0.5)));
+      expect(easy.maxDisparity).toBe(Math.max(6, Math.round(hard.maxDisparity * 0.5)));
+      expect(easy.patternPeriod).toBeLessThan(hard.patternPeriod);
+      expect(easy.maxDisparity).toBeLessThan(hard.maxDisparity);
+    });
+
+    it('calculates medium mode as 3/4 of base autotune', () => {
+      const hard = getAutotuneOptics(1200, 'hard');
+      const med = getAutotuneOptics(1200, 'medium');
+
+      expect(med.patternPeriod).toBe(Math.max(40, Math.round(hard.patternPeriod * 0.75)));
+      expect(med.maxDisparity).toBe(Math.max(6, Math.round(hard.maxDisparity * 0.75)));
+      expect(med.patternPeriod).toBeGreaterThan(getAutotuneOptics(1200, 'easy').patternPeriod);
+      expect(med.patternPeriod).toBeLessThan(hard.patternPeriod);
+    });
+
+    it('defaults to easy mode if no ease level is specified', () => {
+      const explicitEasy = getAutotuneOptics(1920, 'easy');
+      const defaultOptics = getAutotuneOptics(1920);
+
+      expect(defaultOptics.patternPeriod).toBe(explicitEasy.patternPeriod);
+      expect(defaultOptics.maxDisparity).toBe(explicitEasy.maxDisparity);
+    });
   });
 });
 

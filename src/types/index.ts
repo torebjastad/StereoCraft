@@ -19,6 +19,8 @@ export interface ShapeObject {
 
 export type PatternType = 'color-noise' | 'retro-90s' | 'cosmic' | 'organic-flow' | 'sand' | 'custom';
 
+export type EaseOfView = 'easy' | 'medium' | 'hard';
+
 export interface StereogramConfig {
   patternType: PatternType;
   patternPeriod: number; // S: horizontal repetition in pixels (e.g. 100-140)
@@ -30,6 +32,7 @@ export interface StereogramConfig {
   showGuideDots: boolean;
   guideDotColor: string;
   customImageData?: ImageData | null;
+  easeOfView?: EaseOfView; // 'easy' (0.5x), 'medium' (0.75x), 'hard' (1.0x)
 }
 
 export interface CanvasDimensions {
