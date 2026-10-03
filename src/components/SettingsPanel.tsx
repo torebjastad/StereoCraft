@@ -31,11 +31,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const patterns: { id: PatternType; label: string; desc: string; icon: string }[] = [
+    { id: 'sand', label: 'Desert Sand (Default)', desc: 'Warm terracotta & ochre stippling', icon: '🏜️' },
     { id: 'retro-90s', label: 'Retro 90s Neon', desc: 'Vibrant Magic Eye confetti palette', icon: '🎨' },
     { id: 'color-noise', label: 'Micro-Contrast Noise', desc: 'Saturated high-contrast RGB grain', icon: '✨' },
     { id: 'cosmic', label: 'Cosmic Nebula', desc: 'Deep violet, cyan & pinpoint stars', icon: '🌌' },
     { id: 'organic-flow', label: 'Organic Flow', desc: 'Smooth Perlin-noise marble waves', icon: '🌊' },
-    { id: 'sand', label: 'Desert Sand', desc: 'Warm terracotta & ochre stippling', icon: '🏜️' },
     { id: 'custom', label: 'Custom Texture', desc: 'Wrap your own image/wallpaper', icon: '🖼️' },
   ];
 

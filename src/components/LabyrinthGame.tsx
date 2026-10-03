@@ -54,11 +54,11 @@ const DIFFICULTY_SETTINGS: Record<Difficulty, { cols: number; rows: number; labe
 };
 
 const PATTERNS: { id: PatternType; label: string; icon: string }[] = [
+  { id: 'sand', label: 'Sand', icon: '🏜️' },
   { id: 'retro-90s', label: 'Retro 90s', icon: '🎨' },
   { id: 'color-noise', label: 'Noise', icon: '✨' },
   { id: 'cosmic', label: 'Cosmic', icon: '🌌' },
   { id: 'organic-flow', label: 'Flow', icon: '🌊' },
-  { id: 'sand', label: 'Sand', icon: '🏜️' },
 ];
 
 // Format stopwatch string: "00:14.2"

@@ -3,6 +3,7 @@ import {
   ShapeObject,
   ShapeType,
   StereogramConfig,
+  PatternType,
 } from './types/index.ts';
 import { Header } from './components/Header.tsx';
 import { ShapePalette } from './components/ShapePalette.tsx';
@@ -102,21 +103,23 @@ export function scaleShapesForResolutionChange(
 
 const getInitialUrlState = () => {
   if (typeof window === 'undefined') {
-    return { mode: 'studio' as const, width: 800, height: 600, period: 100, disparity: 18, grain: 2 };
+    return { mode: 'studio' as const, width: 800, height: 600, period: 100, disparity: 18, grain: 2, pattern: 'sand' as const };
   }
   const params = new URLSearchParams(window.location.search);
   const mode = params.get('mode') === 'labyrinth' ? ('labyrinth' as const) : ('studio' as const);
+  const patternParam = params.get('pattern') as PatternType | null;
+  const pattern: PatternType = patternParam || 'sand';
   const res = params.get('res');
   if (res === '4k') {
-    return { mode, width: 3840, height: 2160, period: 180, disparity: mode === 'labyrinth' ? 15 : 24, grain: 3 };
+    return { mode, width: 3840, height: 2160, period: 180, disparity: mode === 'labyrinth' ? 15 : 24, grain: 3, pattern };
   } else if (res === '2k') {
-    return { mode, width: 2560, height: 1440, period: 140, disparity: mode === 'labyrinth' ? 15 : 20, grain: 3 };
+    return { mode, width: 2560, height: 1440, period: 140, disparity: mode === 'labyrinth' ? 15 : 20, grain: 3, pattern };
   } else if (res === '1080p') {
-    return { mode, width: 1920, height: 1080, period: 120, disparity: mode === 'labyrinth' ? 15 : 18, grain: 2 };
+    return { mode, width: 1920, height: 1080, period: 120, disparity: mode === 'labyrinth' ? 15 : 18, grain: 2, pattern };
   } else if (res === 'hd') {
-    return { mode, width: 1200, height: 900, period: 100, disparity: mode === 'labyrinth' ? 15 : 16, grain: 2 };
+    return { mode, width: 1200, height: 900, period: 100, disparity: mode === 'labyrinth' ? 15 : 16, grain: 2, pattern };
   }
-  return { mode, width: 800, height: 600, period: 100, disparity: mode === 'labyrinth' ? 15 : 18, grain: 2 };
+  return { mode, width: 800, height: 600, period: 100, disparity: mode === 'labyrinth' ? 15 : 18, grain: 2, pattern };
 };
 
 const initialUrlState = getInitialUrlState();
@@ -135,7 +138,7 @@ export const App: React.FC = () => {
 
   // Optimal stereogram default configuration based on perceptual research
   const [config, setConfig] = useState<StereogramConfig>({
-    patternType: 'retro-90s',
+    patternType: initialUrlState.pattern,
     patternPeriod: initialUrlState.period,
     maxDisparity: initialUrlState.disparity,
     viewingMode: 'parallel',
