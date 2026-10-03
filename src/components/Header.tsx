@@ -5,6 +5,7 @@ import {
   Sparkles,
   Download,
   Maximize2,
+  Minimize2,
   Layers,
   Gamepad2,
   Paintbrush,
@@ -20,6 +21,8 @@ interface HeaderProps {
   onExport: () => void;
   onExportDepth: () => void;
   onLoadPreset: (presetName: string) => void;
+  onToggleFullscreen?: () => void;
+  isFullscreen?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,6 +34,8 @@ export const Header: React.FC<HeaderProps> = ({
   onExport,
   onExportDepth,
   onLoadPreset,
+  onToggleFullscreen,
+  isFullscreen,
 }) => {
   const triggerConfetti = () => {
     confetti({
@@ -214,11 +219,15 @@ export const Header: React.FC<HeaderProps> = ({
         )}
 
         <button
-          onClick={toggleFullscreen}
-          className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition"
-          title="Toggle Fullscreen"
+          onClick={onToggleFullscreen || toggleFullscreen}
+          className={`p-2 rounded-xl border transition cursor-pointer ${
+            isFullscreen
+              ? 'bg-indigo-600/30 border-indigo-500 text-indigo-300 shadow-sm'
+              : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+          }`}
+          title={isFullscreen ? 'Exit Fullscreen (F)' : 'Enter Fullscreen (F)'}
         >
-          <Maximize2 className="w-4 h-4" />
+          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
         </button>
       </div>
     </header>

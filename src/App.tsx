@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   ShapeObject,
   ShapeType,
@@ -157,6 +157,11 @@ export const App: React.FC = () => {
   const dimensionsRef = useRef<{ width: number; height: number }>(dimensions);
   dimensionsRef.current = dimensions;
 
+  const [isStudioFullscreen, setIsStudioFullscreen] = useState<boolean>(false);
+  const [isAutoFit, setIsAutoFit] = useState<boolean>(false);
+  const savedDimensionsRef = useRef<{ width: number; height: number } | null>(null);
+  const studioContainerRef = useRef<HTMLDivElement>(null);
+
   // Scale shapes uniformly when changing resolution to preserve 1:1 aspect ratio and centering
   // Decoupled from setDimensions updater to prevent React StrictMode double-transform side effects
   const handleChangeResolution = useCallback((newWidth: number, newHeight: number) => {
@@ -172,6 +177,156 @@ export const App: React.FC = () => {
       scaleShapesForResolutionChange(prevShapes, prevW, prevH, newWidth, newHeight)
     );
   }, []);
+
+  const handleChangeFixedResolution = useCallback(
+    (newWidth: number, newHeight: number) => {
+      setIsAutoFit(false);
+      handleChangeResolution(newWidth, newHeight);
+    },
+    [handleChangeResolution]
+  );
+
+  // Computes the maximum available viewport area for the stereogram based on screen & GUI margins
+  const calculateAvailableArea = useCallback(() => {
+    if (typeof window === 'undefined') return { width: 1200, height: 900 };
+    if (isStudioFullscreen || Boolean(document.fullscreenElement)) {
+      return { width: window.innerWidth, height: window.innerHeight };
+    }
+    // Studio windowed layout: Left sidebar 320px (w-80), Right sidebar 288px (w-72), Header 64px, Viewport tab bar 48px, Padding 32px + 56px bottom toolbar
+    const leftW = 320;
+    const rightW = 288;
+    const topH = 64 + 48;
+    const paddingX = 32;
+    const paddingY = 56;
+    const availW = Math.max(480, Math.floor((window.innerWidth - leftW - rightW - paddingX) / 10) * 10);
+    const availH = Math.max(360, Math.floor((window.innerHeight - topH - paddingY) / 10) * 10);
+    return { width: availW, height: availH };
+  }, [isStudioFullscreen]);
+
+  const [availableArea, setAvailableArea] = useState<{ width: number; height: number }>(calculateAvailableArea);
+
+  // Fits stereogram to 100% of available display area and optimizes optics
+  const handleFitToViewport = useCallback(
+    (targetWidth?: number, targetHeight?: number) => {
+      setIsAutoFit(true);
+      const area = calculateAvailableArea();
+      const finalW = targetWidth ?? area.width;
+      const finalH = targetHeight ?? area.height;
+
+      handleChangeResolution(finalW, finalH);
+
+      // Auto-tune period and disparity to optimal eye-divergence
+      const recPeriod = Math.max(90, Math.min(260, Math.round(finalW * 0.08 + 35)));
+      const recDisparity = Math.max(16, Math.min(48, Math.round(recPeriod * 0.18)));
+      const recGrain = finalW >= 2400 ? 3 : 2;
+      setConfig((prev) => ({
+        ...prev,
+        patternPeriod: recPeriod,
+        maxDisparity: recDisparity,
+        grainSize: recGrain,
+      }));
+    },
+    [calculateAvailableArea, handleChangeResolution]
+  );
+
+  // Studio Fullscreen toggle
+  const toggleStudioFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement && !isStudioFullscreen) {
+        savedDimensionsRef.current = { ...dimensionsRef.current };
+        if (studioContainerRef.current?.requestFullscreen) {
+          await studioContainerRef.current.requestFullscreen();
+        }
+        setIsStudioFullscreen(true);
+        const fullW = window.innerWidth;
+        const fullH = window.innerHeight;
+        handleChangeResolution(fullW, fullH);
+
+        // Optimize optics for fullscreen width
+        const recPeriod = Math.max(100, Math.min(260, Math.round(fullW * 0.08 + 35)));
+        const recDisparity = Math.max(18, Math.min(48, Math.round(recPeriod * 0.18)));
+        const recGrain = fullW >= 2400 ? 3 : 2;
+        setConfig((prev) => ({
+          ...prev,
+          patternPeriod: recPeriod,
+          maxDisparity: recDisparity,
+          grainSize: recGrain,
+        }));
+      } else {
+        if (document.fullscreenElement && document.exitFullscreen) {
+          await document.exitFullscreen();
+        }
+        setIsStudioFullscreen(false);
+        if (savedDimensionsRef.current) {
+          handleChangeResolution(
+            savedDimensionsRef.current.width,
+            savedDimensionsRef.current.height
+          );
+        }
+      }
+    } catch {
+      setIsStudioFullscreen((prev) => !prev);
+    }
+  }, [isStudioFullscreen, handleChangeResolution]);
+
+  // Sync with document fullscreenchange events (e.g. user pressing Esc)
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const isDocFs = Boolean(document.fullscreenElement);
+      if (!isDocFs && isStudioFullscreen) {
+        setIsStudioFullscreen(false);
+        if (savedDimensionsRef.current) {
+          handleChangeResolution(
+            savedDimensionsRef.current.width,
+            savedDimensionsRef.current.height
+          );
+        }
+      }
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, [isStudioFullscreen, handleChangeResolution]);
+
+  // Track window resizing and re-adapt when in Auto-Fit mode
+  useEffect(() => {
+    let timer: number | null = null;
+    const onResize = () => {
+      const area = calculateAvailableArea();
+      setAvailableArea(area);
+      if (isAutoFit && !isStudioFullscreen) {
+        if (timer) clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          handleFitToViewport();
+        }, 150);
+      }
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      if (timer) clearTimeout(timer);
+    };
+  }, [isAutoFit, isStudioFullscreen, calculateAvailableArea, handleFitToViewport]);
+
+  // Hotkey 'F' to toggle fullscreen in Studio mode
+  useEffect(() => {
+    if (appMode !== 'studio') return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        toggleStudioFullscreen();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [appMode, toggleStudioFullscreen]);
 
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
 
@@ -501,60 +656,64 @@ export const App: React.FC = () => {
         onExport={handleExportStereogram}
         onExportDepth={handleExportDepth}
         onLoadPreset={handleLoadPreset}
+        onToggleFullscreen={appMode === 'studio' ? toggleStudioFullscreen : undefined}
+        isFullscreen={isStudioFullscreen}
       />
 
       {/* Main Mode View */}
       {appMode === 'studio' ? (
-        <main className="flex-1 flex overflow-hidden">
+        <main ref={studioContainerRef} className="flex-1 flex overflow-hidden relative">
           {/* Left Column: Shape Palette + Inspector */}
-          <aside className="w-80 border-r border-slate-800/80 bg-slate-900/50 backdrop-blur-md p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
-            <ShapePalette
-              onAddShape={handleAddShape}
-              onClearAll={handleClearAll}
-              shapeCount={shapes.length}
-            />
+          {!isStudioFullscreen && (
+            <aside className="w-80 border-r border-slate-800/80 bg-slate-900/50 backdrop-blur-md p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
+              <ShapePalette
+                onAddShape={handleAddShape}
+                onClearAll={handleClearAll}
+                shapeCount={shapes.length}
+              />
 
-            {/* Layers List */}
-            {shapes.length > 0 && (
-              <div className="space-y-1.5 p-3 rounded-xl bg-slate-900/60 border border-slate-800/80">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Layers ({shapes.length})
-                </span>
-                <div className="flex flex-col gap-1 max-h-36 overflow-y-auto pr-1">
-                  {shapes.map((s, idx) => {
-                    const isSel = s.id === selectedShapeId;
-                    return (
-                      <button
-                        key={s.id}
-                        onClick={() => setSelectedShapeId(s.id)}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium text-left flex items-center justify-between transition ${
-                          isSel
-                            ? 'bg-indigo-600 text-white font-bold'
-                            : 'bg-slate-800/60 hover:bg-slate-800 text-slate-300'
-                        }`}
-                      >
-                        <span className="capitalize">
-                          {idx + 1}. {s.type}
-                        </span>
-                        <span className="font-mono text-[10px] opacity-80">
-                          Z: {Math.round(s.depth * 100)}%
-                        </span>
-                      </button>
-                    );
-                  })}
+              {/* Layers List */}
+              {shapes.length > 0 && (
+                <div className="space-y-1.5 p-3 rounded-xl bg-slate-900/60 border border-slate-800/80">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Layers ({shapes.length})
+                  </span>
+                  <div className="flex flex-col gap-1 max-h-36 overflow-y-auto pr-1">
+                    {shapes.map((s, idx) => {
+                      const isSel = s.id === selectedShapeId;
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => setSelectedShapeId(s.id)}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-medium text-left flex items-center justify-between transition ${
+                            isSel
+                              ? 'bg-indigo-600 text-white font-bold'
+                              : 'bg-slate-800/60 hover:bg-slate-800 text-slate-300'
+                          }`}
+                        >
+                          <span className="capitalize">
+                            {idx + 1}. {s.type}
+                          </span>
+                          <span className="font-mono text-[10px] opacity-80">
+                            Z: {Math.round(s.depth * 100)}%
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Shape Inspector */}
-            <ShapeInspector
-              selectedShape={selectedShape}
-              onUpdateShape={handleUpdateSelectedShape}
-              onDuplicateShape={handleDuplicateShape}
-              onDeleteShape={handleDeleteShape}
-              onMoveLayer={handleMoveLayer}
-            />
-          </aside>
+              {/* Shape Inspector */}
+              <ShapeInspector
+                selectedShape={selectedShape}
+                onUpdateShape={handleUpdateSelectedShape}
+                onDuplicateShape={handleDuplicateShape}
+                onDeleteShape={handleDeleteShape}
+                onMoveLayer={handleMoveLayer}
+              />
+            </aside>
+          )}
 
           {/* Center: Stereogram Viewport */}
           <StereogramViewport
@@ -571,16 +730,26 @@ export const App: React.FC = () => {
             onDepthRendered={(canvas) => {
               depthCanvasRef.current = canvas;
             }}
+            isFullscreen={isStudioFullscreen}
+            onToggleFullscreen={toggleStudioFullscreen}
+            onFitToViewport={handleFitToViewport}
+            isAutoFit={isAutoFit}
+            onChangeConfig={(upd) => setConfig((prev) => ({ ...prev, ...upd }))}
           />
 
           {/* Right Column: Optics, Disparity, Resolution & Engine Controls */}
-          <SettingsPanel
-            config={config}
-            onChangeConfig={(upd) => setConfig((prev) => ({ ...prev, ...upd }))}
-            canvasWidth={dimensions.width}
-            canvasHeight={dimensions.height}
-            onChangeResolution={handleChangeResolution}
-          />
+          {!isStudioFullscreen && (
+            <SettingsPanel
+              config={config}
+              onChangeConfig={(upd) => setConfig((prev) => ({ ...prev, ...upd }))}
+              canvasWidth={dimensions.width}
+              canvasHeight={dimensions.height}
+              onChangeResolution={handleChangeFixedResolution}
+              onFitToViewport={() => handleFitToViewport()}
+              isAutoFit={isAutoFit}
+              availableArea={availableArea}
+            />
+          )}
         </main>
       ) : (
         /* Labyrinth Game Mode */
@@ -597,7 +766,7 @@ export const App: React.FC = () => {
             onChangeConfig={(upd) => setConfig((prev) => ({ ...prev, ...upd }))}
             canvasWidth={dimensions.width}
             canvasHeight={dimensions.height}
-            onChangeResolution={handleChangeResolution}
+            onChangeResolution={handleChangeFixedResolution}
           />
         </main>
       )}

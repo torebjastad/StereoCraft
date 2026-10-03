@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import {
   StereogramConfig,
   ShapeObject,
+  PatternType,
 } from '../types/index.ts';
 import { renderDepthMap } from '../core/depthRenderer.ts';
 import { generateStereogram, createImageDataHelper } from '../core/stereogramEngine.ts';
@@ -15,6 +16,9 @@ import {
   SplitSquareVertical,
   Activity,
   Sliders,
+  Maximize,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 
 interface StereogramViewportProps {
@@ -27,6 +31,11 @@ interface StereogramViewportProps {
   onUpdateShape: (id: string, updated: Partial<ShapeObject>) => void;
   onStereogramRendered?: (canvas: HTMLCanvasElement) => void;
   onDepthRendered?: (canvas: HTMLCanvasElement) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
+  onFitToViewport?: (width?: number, height?: number) => void;
+  isAutoFit?: boolean;
+  onChangeConfig?: (updated: Partial<StereogramConfig>) => void;
 }
 
 export type ViewTab = 'stereogram' | 'stage' | 'depth' | 'split' | '3d-mesh';
@@ -41,6 +50,11 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
   onUpdateShape,
   onStereogramRendered,
   onDepthRendered,
+  isFullscreen,
+  onToggleFullscreen,
+  onFitToViewport,
+  isAutoFit,
+  onChangeConfig,
 }) => {
   const [activeTab, setActiveTab] = useState<ViewTab>('stereogram');
   const [peekAmount, setPeekAmount] = useState<number>(0); // 0 = 100% stereogram, 1 = 100% depth map
@@ -50,6 +64,27 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
 
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
   const depthCanvasRef = useRef<HTMLCanvasElement>(null);
+  const displayAreaRef = useRef<HTMLDivElement>(null);
+
+  const PATTERNS: { id: PatternType; label: string; icon: string }[] = [
+    { id: 'sand', label: 'Sand', icon: '🏜️' },
+    { id: 'retro-90s', label: 'Retro', icon: '🎨' },
+    { id: 'color-noise', label: 'Noise', icon: '✨' },
+    { id: 'cosmic', label: 'Cosmic', icon: '🌌' },
+    { id: 'organic-flow', label: 'Flow', icon: '🌊' },
+  ];
+
+  const handleMeasureAndFit = () => {
+    if (displayAreaRef.current) {
+      const rect = displayAreaRef.current.getBoundingClientRect();
+      const availW = Math.max(480, Math.floor((rect.width - 32) / 10) * 10);
+      const bottomPadding = activeTab === 'stereogram' ? 56 : 0;
+      const availH = Math.max(360, Math.floor((rect.height - 32 - bottomPadding) / 10) * 10);
+      onFitToViewport?.(availW, availH);
+    } else {
+      onFitToViewport?.();
+    }
+  };
 
   // Compute Depth Map
   const depthMap = useMemo(() => {
@@ -200,85 +235,229 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
   ]);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-950 overflow-hidden relative">
-      {/* Top Viewport Toolbar */}
-      <div className="h-12 border-b border-slate-800/80 px-4 flex items-center justify-between bg-slate-900/50 backdrop-blur-md shrink-0">
-        {/* View Tabs */}
-        <div className="flex items-center p-1 rounded-xl bg-slate-900 border border-slate-800">
-          <button
-            onClick={() => setActiveTab('stereogram')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'stereogram'
-                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
+    <div
+      className={
+        isFullscreen
+          ? 'fixed inset-0 z-50 flex flex-col h-screen w-screen bg-slate-950 overflow-hidden select-none'
+          : 'flex-1 flex flex-col h-full bg-slate-950 overflow-hidden relative'
+      }
+    >
+      {/* Floating HUD Bar in Fullscreen Mode */}
+      {isFullscreen && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-4 py-2 rounded-2xl glass-panel border border-white/10 shadow-2xl backdrop-blur-xl max-w-[96vw] overflow-x-auto">
+          <div className="flex items-center gap-1.5 text-indigo-400 font-bold text-xs shrink-0">
             <Eye className="w-3.5 h-3.5" />
-            <span>Stereogram</span>
-          </button>
+            <span className="hidden sm:inline">StereoMagic Studio</span>
+          </div>
 
-          <button
-            onClick={() => setActiveTab('stage')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'stage'
-                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>2D Stage</span>
-          </button>
+          <div className="h-4 w-px bg-slate-700 shrink-0" />
 
-          <button
-            onClick={() => setActiveTab('depth')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'depth'
-                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>Depth Map</span>
-          </button>
+          {/* View Tabs in Fullscreen */}
+          <div className="flex items-center p-0.5 rounded-lg bg-slate-900/80 border border-slate-800 shrink-0">
+            {(
+              [
+                { id: 'stereogram', label: 'Stereogram', icon: Eye },
+                { id: 'stage', label: '2D Stage', icon: Layers },
+                { id: 'depth', label: 'Depth', icon: Sliders },
+                { id: 'split', label: 'Split', icon: SplitSquareVertical },
+                { id: '3d-mesh', label: '3D Mesh', icon: Box },
+              ] as const
+            ).map((tab) => {
+              const Icon = tab.icon;
+              const isSel = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
+                    isSel
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Icon className="w-3 h-3" />
+                  <span className="hidden md:inline">{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
 
-          <button
-            onClick={() => setActiveTab('split')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'split'
-                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <SplitSquareVertical className="w-3.5 h-3.5" />
-            <span>Split View</span>
-          </button>
+          <div className="h-4 w-px bg-slate-700 shrink-0" />
 
-          <button
-            onClick={() => setActiveTab('3d-mesh')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
-              activeTab === '3d-mesh'
-                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Box className="w-3.5 h-3.5" />
-            <span>3D Relief Mesh</span>
-          </button>
-        </div>
+          {/* Quick Pattern Switcher in Fullscreen */}
+          {onChangeConfig && (
+            <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-900/80 border border-slate-800 shrink-0">
+              {PATTERNS.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => onChangeConfig({ patternType: p.id })}
+                  className={`px-2 py-0.5 rounded text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 ${
+                    config.patternType === p.id
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <span>{p.icon}</span>
+                  <span className="hidden lg:inline">{p.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
-        {/* Status Indicators */}
-        <div className="flex items-center gap-3 text-xs text-slate-400">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span>Period: <strong className="text-slate-200">{config.patternPeriod}px</strong></span>
+          {/* Guide Dots Toggle in Fullscreen */}
+          {onChangeConfig && (
+            <button
+              onClick={() => onChangeConfig({ showGuideDots: !config.showGuideDots })}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer border shrink-0 ${
+                config.showGuideDots
+                  ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-300'
+                  : 'bg-slate-800/80 border-slate-700/60 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>{config.showGuideDots ? 'Dots ON' : 'Dots OFF'}</span>
+            </button>
+          )}
+
+          <div className="h-4 w-px bg-slate-700 shrink-0" />
+
+          {/* Resolution Badge in Fullscreen */}
+          <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0">
+            {canvasWidth} × {canvasHeight}
           </span>
-          <span className="text-slate-600">•</span>
-          <span>Max Disparity: <strong className="text-slate-200">{config.maxDisparity}px</strong></span>
+
+          {/* Exit Fullscreen Button */}
+          {onToggleFullscreen && (
+            <button
+              onClick={onToggleFullscreen}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 hover:text-white font-semibold text-xs border border-rose-500/40 transition active:scale-95 cursor-pointer shadow-sm shrink-0"
+              title="Exit Fullscreen Mode (Esc / F)"
+            >
+              <Minimize2 className="w-3.5 h-3.5" />
+              <span>Exit (Esc)</span>
+            </button>
+          )}
         </div>
-      </div>
+      )}
+
+      {/* Top Viewport Toolbar in Windowed Mode */}
+      {!isFullscreen && (
+        <div className="h-12 border-b border-slate-800/80 px-4 flex items-center justify-between bg-slate-900/50 backdrop-blur-md shrink-0">
+          {/* View Tabs */}
+          <div className="flex items-center p-1 rounded-xl bg-slate-900 border border-slate-800">
+            <button
+              onClick={() => setActiveTab('stereogram')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                activeTab === 'stereogram'
+                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Stereogram</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('stage')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                activeTab === 'stage'
+                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>2D Stage</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('depth')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                activeTab === 'depth'
+                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Depth Map</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('split')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                activeTab === 'split'
+                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <SplitSquareVertical className="w-3.5 h-3.5" />
+              <span>Split View</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('3d-mesh')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                activeTab === '3d-mesh'
+                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Box className="w-3.5 h-3.5" />
+              <span>3D Relief Mesh</span>
+            </button>
+          </div>
+
+          {/* Right Toolbar Controls */}
+          <div className="flex items-center gap-2.5">
+            {/* Status Indicators */}
+            <div className="hidden lg:flex items-center gap-3 text-xs text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                <span>Period: <strong className="text-slate-200">{config.patternPeriod}px</strong></span>
+              </span>
+              <span className="text-slate-600">•</span>
+              <span>Max Disparity: <strong className="text-slate-200">{config.maxDisparity}px</strong></span>
+            </div>
+
+            <div className="h-4 w-px bg-slate-800 hidden sm:block" />
+
+            {/* Fit Viewport Button */}
+            {onFitToViewport && (
+              <button
+                onClick={handleMeasureAndFit}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+                  isAutoFit
+                    ? 'bg-indigo-600/30 border-indigo-500/60 text-indigo-300 shadow-sm'
+                    : 'bg-slate-800/80 hover:bg-slate-700 border-slate-700/60 text-slate-300 hover:text-white'
+                }`}
+                title="Scale stereogram resolution to fill the available display area completely without black bars"
+              >
+                <Maximize2 className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="hidden sm:inline">Fit Viewport</span>
+              </button>
+            )}
+
+            {/* Fullscreen Button */}
+            {onToggleFullscreen && (
+              <button
+                onClick={onToggleFullscreen}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 hover:text-white transition cursor-pointer shadow-sm active:scale-95"
+                title="Fullscreen Mode (F)"
+              >
+                <Maximize className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Fullscreen</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Main Display Area */}
-      <div className="flex-1 relative flex items-center justify-center p-4 overflow-hidden">
+      <div
+        ref={displayAreaRef}
+        className={`flex-1 relative flex items-center justify-center overflow-hidden ${
+          isFullscreen ? 'p-0 w-full h-full' : 'p-4'
+        }`}
+      >
         {/* 1. Stereogram Main Canvas */}
         <div
           className={`relative max-w-full max-h-full flex items-center justify-center ${
@@ -290,7 +469,11 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
             ref={mainCanvasRef}
             width={canvasWidth}
             height={canvasHeight}
-            className="w-full h-full object-contain rounded-xl shadow-2xl border border-slate-800"
+            className={
+              isFullscreen
+                ? 'w-full h-full object-contain'
+                : 'w-full h-full object-contain rounded-xl shadow-2xl border border-slate-800'
+            }
           />
 
           {/* Guide Dots Overlay Indicator */}

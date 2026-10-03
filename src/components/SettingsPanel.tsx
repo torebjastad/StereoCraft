@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Info,
   Sparkles,
+  Maximize,
 } from 'lucide-react';
 
 interface SettingsPanelProps {
@@ -19,6 +20,9 @@ interface SettingsPanelProps {
   canvasWidth: number;
   canvasHeight: number;
   onChangeResolution: (width: number, height: number) => void;
+  onFitToViewport?: () => void;
+  isAutoFit?: boolean;
+  availableArea?: { width: number; height: number };
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -27,6 +31,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   canvasWidth,
   canvasHeight,
   onChangeResolution,
+  onFitToViewport,
+  isAutoFit,
+  availableArea,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -289,7 +296,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       <div className="h-px bg-slate-800" />
 
       {/* Resolution Selector */}
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         <div className="flex items-center justify-between">
           <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
             Resolution Presets
@@ -298,6 +305,40 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             {canvasWidth} × {canvasHeight}
           </span>
         </div>
+
+        {/* Auto-Fit Available Area Button */}
+        {onFitToViewport && (
+          <button
+            onClick={onFitToViewport}
+            className={`w-full py-2 px-3 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
+              isAutoFit
+                ? 'bg-gradient-to-r from-indigo-600/30 to-purple-600/30 border-indigo-500 text-white shadow-md shadow-indigo-500/20 ring-1 ring-indigo-400/40'
+                : 'bg-slate-800/60 border-slate-700/60 text-slate-300 hover:text-white hover:border-indigo-500/50 hover:bg-slate-800'
+            }`}
+            title="Automatically check available area between GUI elements and scale stereogram as large as possible"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="p-1 rounded-lg bg-indigo-500/20 text-indigo-400">
+                <Maximize className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <div className="text-[11px] font-bold leading-tight flex items-center gap-1.5">
+                  <span>Fit Available Area</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-extrabold uppercase">
+                    Auto
+                  </span>
+                </div>
+                <div className="text-[9px] text-slate-400 mt-0.5">
+                  Max size without black bars {availableArea ? `(${availableArea.width} × ${availableArea.height})` : ''}
+                </div>
+              </div>
+            </div>
+            <span className="text-[10px] font-mono font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20 shrink-0">
+              Fill
+            </span>
+          </button>
+        )}
+
         <div className="grid grid-cols-2 gap-1.5">
           {[
             { w: 800, h: 600, label: '800 × 600', sub: 'Standard (Fast)', period: 110, disparity: 20, grain: 2 },
