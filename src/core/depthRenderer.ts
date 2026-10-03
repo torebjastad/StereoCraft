@@ -1,4 +1,10 @@
 import { ShapeObject, DepthProfileType } from '../types/index.ts';
+import {
+  TextDepthField,
+  TextMaskRasterizer,
+  getTextDepthField,
+  sampleTextField,
+} from './textField.ts';
 
 /**
  * Calculates depth at normalized coordinate (nx, ny) for a circle
@@ -139,62 +145,139 @@ function getStarDepth(
 }
 
 /**
- * Evaluates the depth contribution of a single shape at canvas pixel (x, y)
+ * Calculates depth for a text shape by sampling its glyph depth field.
+ * `edge` is the normalized distance to the nearest glyph edge (1 = stroke centre).
  */
-export function evaluateShapeAtPixel(shape: ShapeObject, x: number, y: number): number {
-  const dx = x - shape.x;
-  const dy = y - shape.y;
+function getTextDepth(
+  field: TextDepthField,
+  nx: number,
+  ny: number,
+  profile: DepthProfileType,
+  maxDepth: number,
+  sample: { coverage: number; edge: number }
+): number {
+  if (!sampleTextField(field, nx, ny, sample)) return 0;
+  const { coverage, edge } = sample;
+  if (coverage <= 0.002) return 0;
 
-  // Rotate point backwards
-  const rad = (-shape.rotation * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const rx = dx * cos - dy * sin;
-  const ry = dx * sin + dy * cos;
-
-  // Normalized to [-1, 1] relative to half-dimensions
-  const halfW = shape.width / 2;
-  const halfH = shape.height / 2;
-  if (halfW <= 0 || halfH <= 0) return 0;
-
-  const nx = rx / halfW;
-  const ny = ry / halfH;
-
-  switch (shape.type) {
-    case 'circle':
-      return getCircleDepth(nx, ny, shape.profile, shape.depth);
-    case 'square':
-      return getSquareDepth(nx, ny, shape.profile, shape.depth);
-    case 'triangle':
-      return getTriangleDepth(nx, ny, shape.profile, shape.depth);
-    case 'star':
-      return getStarDepth(
-        nx,
-        ny,
-        shape.profile,
-        shape.depth,
-        shape.starPoints ?? 5,
-        shape.innerRadiusRatio ?? 0.45
-      );
+  switch (profile) {
+    case 'dome':
+      return maxDepth * Math.sin(edge * (Math.PI / 2)) * Math.min(1, coverage * 2);
+    case 'pyramid':
+      return maxDepth * edge * Math.min(1, coverage * 2);
+    case 'beveled': {
+      const t = Math.min(1, edge / 0.4);
+      return maxDepth * (t * t * (3 - 2 * t)) * Math.min(1, coverage * 2);
+    }
+    case 'flat':
     default:
-      return 0;
+      return maxDepth * coverage;
   }
 }
 
 /**
+ * Builds a per-pixel depth evaluator for a shape. All trigonometry and divisions are
+ * hoisted out of the returned closure, which matters because it runs once per pixel.
+ */
+export function createShapeEvaluator(
+  shape: ShapeObject,
+  textField?: TextDepthField | null
+): (x: number, y: number) => number {
+  const halfW = shape.width / 2;
+  const halfH = shape.height / 2;
+  if (halfW <= 0 || halfH <= 0) return () => 0;
+
+  const { profile, depth } = shape;
+  let shapeFn: (nx: number, ny: number) => number;
+
+  switch (shape.type) {
+    case 'circle':
+      shapeFn = (nx, ny) => getCircleDepth(nx, ny, profile, depth);
+      break;
+    case 'square':
+      shapeFn = (nx, ny) => getSquareDepth(nx, ny, profile, depth);
+      break;
+    case 'triangle':
+      shapeFn = (nx, ny) => getTriangleDepth(nx, ny, profile, depth);
+      break;
+    case 'star': {
+      const points = shape.starPoints ?? 5;
+      const inner = shape.innerRadiusRatio ?? 0.45;
+      shapeFn = (nx, ny) => getStarDepth(nx, ny, profile, depth, points, inner);
+      break;
+    }
+    case 'text': {
+      if (!textField) return () => 0;
+      const sample = { coverage: 0, edge: 0 };
+      shapeFn = (nx, ny) => getTextDepth(textField, nx, ny, profile, depth, sample);
+      break;
+    }
+    default:
+      return () => 0;
+  }
+
+  const rad = (-shape.rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const cx = shape.x;
+  const cy = shape.y;
+  const invHalfW = 1 / halfW;
+  const invHalfH = 1 / halfH;
+
+  return (x, y) => {
+    const dx = x - cx;
+    const dy = y - cy;
+    const rx = dx * cos - dy * sin;
+    const ry = dx * sin + dy * cos;
+    return shapeFn(rx * invHalfW, ry * invHalfH);
+  };
+}
+
+/**
+ * Evaluates the depth contribution of a single shape at canvas pixel (x, y).
+ * Text shapes need their glyph field (see getTextDepthField) and contribute nothing without it.
+ */
+export function evaluateShapeAtPixel(
+  shape: ShapeObject,
+  x: number,
+  y: number,
+  textField?: TextDepthField | null
+): number {
+  return createShapeEvaluator(shape, textField)(x, y);
+}
+
+export interface PixelRegion {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+/**
  * Smooths depth buffer with a separable 1D Gaussian kernel to prevent
- * steep occlusion tears in the autostereogram
+ * steep occlusion tears in the autostereogram.
+ *
+ * When `region` is given, only that (inclusive) pixel window is filtered; everything
+ * outside is left at zero. Callers pass the padded bounding box of their non-zero
+ * content, which gives identical output at a fraction of the cost.
  */
 export function smoothDepthMap(
   buffer: Float32Array,
   width: number,
   height: number,
-  radius: number
+  radius: number,
+  region?: PixelRegion
 ): Float32Array {
   if (radius <= 0) return buffer;
 
+  const minX = region ? Math.max(0, region.minX) : 0;
+  const maxX = region ? Math.min(width - 1, region.maxX) : width - 1;
+  const minY = region ? Math.max(0, region.minY) : 0;
+  const maxY = region ? Math.min(height - 1, region.maxY) : height - 1;
+
   const temp = new Float32Array(width * height);
   const result = new Float32Array(width * height);
+  if (minX > maxX || minY > maxY) return result;
 
   // Kernel weights for radius 1, 2, or 3
   const kernel: number[] = [];
@@ -208,10 +291,12 @@ export function smoothDepthMap(
     kernel[i] /= sum;
   }
 
-  // Horizontal pass
-  for (let y = 0; y < height; y++) {
+  // Horizontal pass. Rows above/below the window feed the vertical pass, so extend by radius.
+  const hMinY = Math.max(0, minY - radius);
+  const hMaxY = Math.min(height - 1, maxY + radius);
+  for (let y = hMinY; y <= hMaxY; y++) {
     const rowOffset = y * width;
-    for (let x = 0; x < width; x++) {
+    for (let x = minX; x <= maxX; x++) {
       let val = 0;
       for (let k = -radius; k <= radius; k++) {
         const sx = Math.min(width - 1, Math.max(0, x + k));
@@ -222,9 +307,9 @@ export function smoothDepthMap(
   }
 
   // Vertical pass - cache-friendly row-major traversal
-  for (let y = 0; y < height; y++) {
+  for (let y = minY; y <= maxY; y++) {
     const rowOffset = y * width;
-    for (let x = 0; x < width; x++) {
+    for (let x = minX; x <= maxX; x++) {
       let val = 0;
       for (let k = -radius; k <= radius; k++) {
         const sy = Math.min(height - 1, Math.max(0, y + k));
@@ -237,6 +322,11 @@ export function smoothDepthMap(
   return result;
 }
 
+export interface RenderDepthOptions {
+  /** Browser-provided glyph rasterizer; without it, text shapes are skipped. */
+  textRasterizer?: TextMaskRasterizer;
+}
+
 /**
  * Renders full depth map for a collection of shapes
  */
@@ -244,7 +334,8 @@ export function renderDepthMap(
   shapes: ShapeObject[],
   width: number,
   height: number,
-  smoothingRadius: number = 1
+  smoothingRadius: number = 1,
+  options: RenderDepthOptions = {}
 ): Float32Array {
   const depthBuffer = new Float32Array(width * height);
 
@@ -252,33 +343,52 @@ export function renderDepthMap(
     return depthBuffer;
   }
 
-  // Compute bounding boxes for each shape to optimize rendering
-  const shapeBoxes = shapes.map((shape) => {
-    const maxDim = Math.max(shape.width, shape.height) * 1.45;
-    return {
-      shape,
-      minX: Math.max(0, Math.floor(shape.x - maxDim)),
-      maxX: Math.min(width - 1, Math.ceil(shape.x + maxDim)),
-      minY: Math.max(0, Math.floor(shape.y - maxDim)),
-      maxY: Math.min(height - 1, Math.ceil(shape.y + maxDim)),
-    };
-  });
+  let regionMinX = Infinity;
+  let regionMaxX = -Infinity;
+  let regionMinY = Infinity;
+  let regionMaxY = -Infinity;
 
-  for (const { shape, minX, maxX, minY, maxY } of shapeBoxes) {
+  for (const shape of shapes) {
+    const textField =
+      shape.type === 'text' && options.textRasterizer
+        ? getTextDepthField(shape, options.textRasterizer)
+        : null;
+    if (shape.type === 'text' && !textField) continue;
+
+    // A box rotated about its centre always fits in a circle of radius hypot(w, h) / 2.
+    const reach = Math.hypot(shape.width, shape.height) / 2 + 2;
+    const minX = Math.max(0, Math.floor(shape.x - reach));
+    const maxX = Math.min(width - 1, Math.ceil(shape.x + reach));
+    const minY = Math.max(0, Math.floor(shape.y - reach));
+    const maxY = Math.min(height - 1, Math.ceil(shape.y + reach));
+    if (minX > maxX || minY > maxY) continue;
+
+    if (minX < regionMinX) regionMinX = minX;
+    if (maxX > regionMaxX) regionMaxX = maxX;
+    if (minY < regionMinY) regionMinY = minY;
+    if (maxY > regionMaxY) regionMaxY = maxY;
+
+    const evaluate = createShapeEvaluator(shape, textField);
     for (let y = minY; y <= maxY; y++) {
       const rowOffset = y * width;
       for (let x = minX; x <= maxX; x++) {
-        const d = evaluateShapeAtPixel(shape, x, y);
+        const d = evaluate(x, y);
         if (d > 0) {
           const idx = rowOffset + x;
-          depthBuffer[idx] = Math.max(depthBuffer[idx], d);
+          if (d > depthBuffer[idx]) depthBuffer[idx] = d;
         }
       }
     }
   }
 
   if (smoothingRadius > 0) {
-    return smoothDepthMap(depthBuffer, width, height, smoothingRadius);
+    if (regionMinX > regionMaxX) return depthBuffer; // nothing drawn on canvas
+    return smoothDepthMap(depthBuffer, width, height, smoothingRadius, {
+      minX: regionMinX - smoothingRadius,
+      maxX: regionMaxX + smoothingRadius,
+      minY: regionMinY - smoothingRadius,
+      maxY: regionMaxY + smoothingRadius,
+    });
   }
 
   return depthBuffer;

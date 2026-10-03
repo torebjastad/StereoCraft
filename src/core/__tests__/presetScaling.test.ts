@@ -126,4 +126,32 @@ describe('Preset and Resolution Scaling', () => {
     expect(backTo800[0].width).toBe(220);
     expect(backTo800[0].height).toBe(220);
   });
+
+  it('scales text shapes proportionally while preserving typography attributes', () => {
+    const textShape: ShapeObject = {
+      id: 'txt-1',
+      type: 'text',
+      text: 'HELLO',
+      fontFamily: 'impact',
+      fontBold: true,
+      fontItalic: false,
+      x: 400,
+      y: 300,
+      width: 200,
+      height: 100,
+      rotation: 0,
+      depth: 0.85,
+      profile: 'beveled',
+    };
+
+    const scaled = scalePresetShape(textShape, 1600, 1200);
+    expect(scaled.text).toBe('HELLO');
+    expect(scaled.fontFamily).toBe('impact');
+    expect(scaled.fontBold).toBe(true);
+    expect(scaled.profile).toBe('beveled');
+    expect(scaled.width).toBe(400);
+    expect(scaled.height).toBe(200);
+    expect(scaled.x).toBe(800);
+    expect(scaled.y).toBe(600);
+  });
 });

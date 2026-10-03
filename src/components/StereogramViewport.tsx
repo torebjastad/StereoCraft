@@ -7,6 +7,7 @@ import {
 } from '../types/index.ts';
 import { renderDepthMap } from '../core/depthRenderer.ts';
 import { generateStereogram, createImageDataHelper } from '../core/stereogramEngine.ts';
+import { createCanvasTextRasterizer, clearTextLayoutCache } from '../utils/canvasText.ts';
 import { generateParallaxView } from '../core/wigglegram.ts';
 import { MeshReliefViewer } from './MeshReliefViewer.tsx';
 import { StageEditor } from './StageEditor.tsx';
@@ -98,10 +99,49 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
     }
   };
 
+  // Text rasterizer for the depth renderer. Re-created when web fonts finish loading so
+  // glyphs rendered with a fallback font get rasterized again with the real one.
+  const [fontEpoch, setFontEpoch] = useState<number>(0);
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.fonts) return;
+    const bump = () => {
+      clearTextLayoutCache();
+      setFontEpoch((n) => n + 1);
+    };
+    document.fonts.ready.then(bump);
+    document.fonts.addEventListener('loadingdone', bump);
+    return () => document.fonts.removeEventListener('loadingdone', bump);
+  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const textRasterizer = useMemo(() => createCanvasTextRasterizer(), [fontEpoch]);
+
+  // While editing on the 2D stage nothing on screen depends on the depth map, so only
+  // recompute it once the shapes have settled. Every other tab uses the live shapes.
+  const isStageTab = activeTab === 'stage';
+  const [settled, setSettled] = useState<{ shapes: ShapeObject[]; w: number; h: number }>({
+    shapes,
+    w: canvasWidth,
+    h: canvasHeight,
+  });
+  useEffect(() => {
+    const snapshot = { shapes, w: canvasWidth, h: canvasHeight };
+    if (!isStageTab) {
+      setSettled(snapshot);
+      return;
+    }
+    const timer = setTimeout(() => setSettled(snapshot), 250);
+    return () => clearTimeout(timer);
+  }, [shapes, canvasWidth, canvasHeight, isStageTab]);
+  // A resolution change rescales the shapes in the same update, so bypass the deferral then.
+  const settledIsCurrent = settled.w === canvasWidth && settled.h === canvasHeight;
+  const effectiveShapes = isStageTab && settledIsCurrent ? settled.shapes : shapes;
+
   // Compute Depth Map
   const depthMap = useMemo(() => {
-    return renderDepthMap(shapes, canvasWidth, canvasHeight, config.smoothingRadius);
-  }, [shapes, canvasWidth, canvasHeight, config.smoothingRadius]);
+    return renderDepthMap(effectiveShapes, canvasWidth, canvasHeight, config.smoothingRadius, {
+      textRasterizer,
+    });
+  }, [effectiveShapes, canvasWidth, canvasHeight, config.smoothingRadius, textRasterizer]);
 
   // Compute Stereogram ImageData lazily and debounced
   const isStereogramTab = activeTab === 'stereogram' || activeTab === 'split';

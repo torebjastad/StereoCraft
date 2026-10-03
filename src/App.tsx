@@ -441,18 +441,24 @@ export const App: React.FC = () => {
     const scale = Math.min(dimensions.width / 800, dimensions.height / 600);
     const id = `shape-${type}-${Date.now()}`;
     const baseSize = Math.max(20, Math.round(120 * scale));
+    const isText = type === 'text';
+    const width = isText ? Math.max(40, Math.round(220 * scale)) : baseSize;
+    const height = isText ? Math.max(20, Math.round(100 * scale)) : baseSize;
     const newShape: ShapeObject = {
       id,
       type,
       x: Math.round(dimensions.width / 2 + (Math.random() * 60 - 30) * scale),
       y: Math.round(dimensions.height / 2 + (Math.random() * 60 - 30) * scale),
-      width: baseSize,
-      height: baseSize,
+      width,
+      height,
       rotation: 0,
-      depth: 0.7,
-      profile: 'dome',
+      depth: isText ? 0.85 : 0.7,
+      profile: isText ? 'beveled' : 'dome',
       starPoints: 5,
       innerRadiusRatio: 0.45,
+      text: isText ? '3D' : undefined,
+      fontFamily: isText ? 'impact' : undefined,
+      fontBold: isText ? true : undefined,
     };
     setShapes((prev) => [...prev, newShape]);
     setSelectedShapeId(id);
@@ -822,6 +828,8 @@ export const App: React.FC = () => {
                 onDuplicateShape={handleDuplicateShape}
                 onDeleteShape={handleDeleteShape}
                 onMoveLayer={handleMoveLayer}
+                canvasWidth={dimensions.width}
+                canvasHeight={dimensions.height}
               />
             </aside>
           )}

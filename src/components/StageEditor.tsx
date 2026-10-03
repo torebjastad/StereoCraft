@@ -1,5 +1,6 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { ShapeObject } from '../types/index.ts';
+import { clearTextLayoutCache, drawFittedText } from '../utils/canvasText.ts';
 
 interface StageEditorProps {
   shapes: ShapeObject[];
@@ -11,6 +12,8 @@ interface StageEditorProps {
 }
 
 type DragMode = 'move' | 'rotate' | 'scale';
+type Corner = 'tl' | 'tr' | 'br' | 'bl';
+type Handle = 'rotate' | Corner;
 
 interface DragState {
   mode: DragMode;
@@ -22,9 +25,22 @@ interface DragState {
   origW: number;
   origH: number;
   origRotation: number;
-  corner?: 'tl' | 'tr' | 'br' | 'bl';
+  corner?: Corner;
   origDist?: number;
 }
+
+/**
+ * The stage is a pure editing surface, so it never needs more internal pixels than a
+ * typical screen can show. Capping the backing store keeps 2K/4K canvases as cheap to
+ * redraw as an 800x600 one; coordinates stay in logical canvas units via a transform.
+ */
+const MAX_STAGE_PIXELS = 1400;
+
+/** How often (ms) an in-progress drag is pushed to app state (the stage itself redraws every frame). */
+const COMMIT_INTERVAL_MS = 90;
+
+const MIN_SHAPE_SIZE = 12;
+const ROTATE_STEM = 26;
 
 /**
  * Transforms canvas coordinates (x, y) to shape-local coordinates (u, v)
@@ -58,6 +74,141 @@ function getResizeCursor(cornerAngleDeg: number, shapeRotation: number): string 
   return 'ew-resize';
 }
 
+const CORNER_ANGLES: Record<Corner, number> = { tl: -135, tr: -45, br: 45, bl: 135 };
+
+/**
+ * Tests the transform handles of a (selected) shape. `ui` is the logical-units-per-screen-pixel
+ * factor so handles keep a constant on-screen size at any canvas resolution.
+ */
+function hitHandle(shape: ShapeObject, x: number, y: number, ui: number): Handle | null {
+  const { u, v } = toLocalCoords(x, y, shape.x, shape.y, shape.rotation);
+  const halfW = shape.width / 2;
+  const halfH = shape.height / 2;
+
+  if (Math.hypot(u, v + halfH + ROTATE_STEM * ui) <= 14 * ui) return 'rotate';
+
+  const r = 12 * ui;
+  if (Math.hypot(u + halfW, v + halfH) <= r) return 'tl';
+  if (Math.hypot(u - halfW, v + halfH) <= r) return 'tr';
+  if (Math.hypot(u - halfW, v - halfH) <= r) return 'br';
+  if (Math.hypot(u + halfW, v - halfH) <= r) return 'bl';
+  return null;
+}
+
+function isInsideBody(shape: ShapeObject, x: number, y: number, pad: number): boolean {
+  const { u, v } = toLocalCoords(x, y, shape.x, shape.y, shape.rotation);
+  return Math.abs(u) <= shape.width / 2 + pad && Math.abs(v) <= shape.height / 2 + pad;
+}
+
+function hitShapeBody(shape: ShapeObject, x: number, y: number): boolean {
+  const { u, v } = toLocalCoords(x, y, shape.x, shape.y, shape.rotation);
+  const halfW = shape.width / 2;
+  const halfH = shape.height / 2;
+  if (shape.type === 'circle') {
+    return (u * u) / (halfW * halfW) + (v * v) / (halfH * halfH) <= 1.0;
+  }
+  return Math.abs(u) <= halfW && Math.abs(v) <= halfH;
+}
+
+/**
+ * Clamps a uniform scale factor so the shape keeps its proportions, never collapses
+ * below a grabbable size, and never outgrows the canvas.
+ */
+function clampUniformScale(
+  scale: number,
+  w: number,
+  h: number,
+  canvasW: number,
+  canvasH: number
+): number {
+  const minScale = MIN_SHAPE_SIZE / Math.max(1, Math.min(w, h));
+  const maxScale = Math.max(1, Math.min((canvasW * 0.95) / w, (canvasH * 0.95) / h));
+  return Math.min(Math.max(scale, minScale), Math.max(minScale, maxScale));
+}
+
+function traceShapePath(ctx: CanvasRenderingContext2D, shape: ShapeObject): void {
+  const halfW = shape.width / 2;
+  const halfH = shape.height / 2;
+  ctx.beginPath();
+
+  switch (shape.type) {
+    case 'circle':
+      ctx.ellipse(0, 0, halfW, halfH, 0, 0, Math.PI * 2);
+      break;
+    case 'square':
+      ctx.roundRect(-halfW, -halfH, shape.width, shape.height, shape.cornerRadius || 8);
+      break;
+    case 'triangle':
+      ctx.moveTo(0, -halfH);
+      ctx.lineTo(halfW, halfH * 0.8);
+      ctx.lineTo(-halfW, halfH * 0.8);
+      ctx.closePath();
+      break;
+    case 'star': {
+      const points = shape.starPoints || 5;
+      const innerRatio = shape.innerRadiusRatio || 0.45;
+      const step = Math.PI / points;
+      for (let i = 0; i < points * 2; i++) {
+        const rad = i * step - Math.PI / 2;
+        const r = i % 2 === 0 ? halfW : halfW * innerRatio;
+        const px = Math.cos(rad) * r;
+        const py = Math.sin(rad) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+/** Static backdrop (fill, grid, centre cross) rendered once per size and blitted every frame. */
+function createBackground(
+  pixelW: number,
+  pixelH: number,
+  canvasW: number,
+  canvasH: number
+): HTMLCanvasElement {
+  const bg = document.createElement('canvas');
+  bg.width = pixelW;
+  bg.height = pixelH;
+  const ctx = bg.getContext('2d');
+  if (!ctx) return bg;
+
+  const rs = pixelW / canvasW;
+  ctx.setTransform(rs, 0, 0, rs, 0, 0);
+  const hairline = 1 / rs;
+
+  ctx.fillStyle = '#090d16';
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = hairline;
+  const gridSize = Math.round(40 * Math.max(1, Math.min(canvasW / 800, canvasH / 600)));
+  ctx.beginPath();
+  for (let x = 0; x < canvasW; x += gridSize) {
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvasH);
+  }
+  for (let y = 0; y < canvasH; y += gridSize) {
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvasW, y);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = '#334155';
+  ctx.setLineDash([4 * hairline * 2, 4 * hairline * 2]);
+  ctx.beginPath();
+  ctx.moveTo(canvasW / 2, 0);
+  ctx.lineTo(canvasW / 2, canvasH);
+  ctx.moveTo(0, canvasH / 2);
+  ctx.lineTo(canvasW, canvasH / 2);
+  ctx.stroke();
+  return bg;
+}
+
 export const StageEditor: React.FC<StageEditorProps> = ({
   shapes,
   selectedShapeId,
@@ -69,508 +220,434 @@ export const StageEditor: React.FC<StageEditorProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const [dragState, setDragState] = useState<DragState | null>(null);
+  // Backing-store size (see MAX_STAGE_PIXELS)
+  const renderScale = Math.min(1, MAX_STAGE_PIXELS / Math.max(canvasWidth, canvasHeight));
+  const pixelW = Math.max(1, Math.round(canvasWidth * renderScale));
+  const pixelH = Math.max(1, Math.round(canvasHeight * renderScale));
 
-  // RAF scheduler to batch mousemove updates at display refresh rate without dropping frames
-  const rafRef = useRef<number | null>(null);
-  const pendingUpdateRef = useRef<{ id: string; update: Partial<ShapeObject> } | null>(null);
+  // Latest props mirrored into refs so imperative handlers/draw loop never see stale values
+  const shapesRef = useRef(shapes);
+  shapesRef.current = shapes;
+  const selectedIdRef = useRef(selectedShapeId);
+  selectedIdRef.current = selectedShapeId;
+  const dimsRef = useRef({ width: canvasWidth, height: canvasHeight });
+  dimsRef.current = { width: canvasWidth, height: canvasHeight };
+  const onUpdateRef = useRef(onUpdateShape);
+  onUpdateRef.current = onUpdateShape;
+  const onSelectRef = useRef(onSelectShape);
+  onSelectRef.current = onSelectShape;
 
-  const scheduleUpdate = useCallback(
-    (id: string, update: Partial<ShapeObject>) => {
-      pendingUpdateRef.current = { id, update };
-      if (rafRef.current === null) {
-        rafRef.current = requestAnimationFrame(() => {
-          rafRef.current = null;
-          if (pendingUpdateRef.current) {
-            onUpdateShape(pendingUpdateRef.current.id, pendingUpdateRef.current.update);
-            pendingUpdateRef.current = null;
-          }
-        });
-      }
-    },
-    [onUpdateShape]
-  );
+  // Interaction state lives in refs: dragging never triggers a React render
+  const dragRef = useRef<DragState | null>(null);
+  const overrideRef = useRef<{ id: string; update: Partial<ShapeObject> } | null>(null);
+  const lastCommitRef = useRef(0);
+  const uiScaleRef = useRef(1);
+  const cursorRef = useRef('default');
+  const drawRafRef = useRef<number | null>(null);
+  const bgRef = useRef<{ key: string; canvas: HTMLCanvasElement } | null>(null);
 
-  // Convert client mouse coordinates to canvas internal coordinates
-  const getCanvasCoords = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return { x: 0, y: 0 };
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvasWidth / rect.width;
-      const scaleY = canvasHeight / rect.height;
-      return {
-        x: (e.clientX - rect.left) * scaleX,
-        y: (e.clientY - rect.top) * scaleY,
-      };
-    },
-    [canvasWidth, canvasHeight]
-  );
+  const setCursor = (value: string) => {
+    if (cursorRef.current === value) return;
+    cursorRef.current = value;
+    if (canvasRef.current) canvasRef.current.style.cursor = value;
+  };
 
-  // Draw 2D stage
-  useEffect(() => {
+  // Convert client pointer coordinates to canvas (logical) coordinates
+  const getCanvasCoords = (e: { clientX: number; clientY: number }) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * (dimsRef.current.width / rect.width),
+      y: (e.clientY - rect.top) * (dimsRef.current.height / rect.height),
+    };
+  };
+
+  const draw = useCallback(() => {
+    drawRafRef.current = null;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear background
-    ctx.fillStyle = '#090d16'; // slate-950
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    const { width: cw, height: ch } = dimsRef.current;
+    const rs = canvas.width / cw;
+    const ui = uiScaleRef.current;
 
-    // Subtle coordinate grid
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 1;
-    const gridSize = 40;
-    for (let x = 0; x < canvasWidth; x += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvasHeight);
-      ctx.stroke();
+    // Backdrop
+    const bgKey = `${canvas.width}x${canvas.height}@${cw}x${ch}`;
+    if (!bgRef.current || bgRef.current.key !== bgKey) {
+      bgRef.current = { key: bgKey, canvas: createBackground(canvas.width, canvas.height, cw, ch) };
     }
-    for (let y = 0; y < canvasHeight; y += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvasWidth, y);
-      ctx.stroke();
-    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(bgRef.current.canvas, 0, 0);
+    ctx.setTransform(rs, 0, 0, rs, 0, 0);
 
-    // Center crosshair
-    ctx.strokeStyle = '#334155';
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    ctx.moveTo(canvasWidth / 2, 0);
-    ctx.lineTo(canvasWidth / 2, canvasHeight);
-    ctx.moveTo(0, canvasHeight / 2);
-    ctx.lineTo(canvasWidth, canvasHeight / 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    // Apply the live drag override on top of committed shapes
+    const override = overrideRef.current;
+    const list = override
+      ? shapesRef.current.map((s) => (s.id === override.id ? { ...s, ...override.update } : s))
+      : shapesRef.current;
+    const selectedId = selectedIdRef.current;
+    let selected: ShapeObject | null = null;
 
-    // Draw all shapes in layer order
-    shapes.forEach((shape) => {
-      const isSelected = shape.id === selectedShapeId;
+    for (const shape of list) {
+      const isSelected = shape.id === selectedId;
+      if (isSelected) selected = shape;
+
+      const halfW = shape.width / 2;
+      const halfH = shape.height / 2;
+      const brightness = Math.round(50 + shape.depth * 180);
+      const fillColor = `rgb(${brightness}, ${brightness}, ${brightness})`;
 
       ctx.save();
       ctx.translate(shape.x, shape.y);
       ctx.rotate((shape.rotation * Math.PI) / 180);
 
-      // Depth brightness representation: higher depth = brighter fill
-      const brightness = Math.round(50 + shape.depth * 180);
-      const fillColor = `rgb(${brightness}, ${brightness}, ${brightness})`;
-
-      ctx.fillStyle = fillColor;
-      ctx.strokeStyle = isSelected ? '#6366f1' : '#64748b';
-      ctx.lineWidth = isSelected ? 3 : 1.5;
-
-      const halfW = shape.width / 2;
-      const halfH = shape.height / 2;
-
-      ctx.beginPath();
-
-      switch (shape.type) {
-        case 'circle': {
-          ctx.ellipse(0, 0, halfW, halfH, 0, 0, Math.PI * 2);
-          break;
+      if (shape.type === 'text') {
+        if ((shape.text ?? '').trim()) {
+          ctx.save();
+          ctx.translate(-halfW, -halfH);
+          drawFittedText(ctx, shape, shape.width, shape.height, fillColor);
+          ctx.restore();
+        } else {
+          ctx.strokeStyle = '#64748b';
+          ctx.lineWidth = 1.5 * ui;
+          ctx.setLineDash([4 * ui, 4 * ui]);
+          ctx.strokeRect(-halfW, -halfH, shape.width, shape.height);
         }
-        case 'square': {
-          ctx.roundRect(-halfW, -halfH, shape.width, shape.height, shape.cornerRadius || 8);
-          break;
-        }
-        case 'triangle': {
-          ctx.moveTo(0, -halfH);
-          ctx.lineTo(halfW, halfH * 0.8);
-          ctx.lineTo(-halfW, halfH * 0.8);
-          ctx.closePath();
-          break;
-        }
-        case 'star': {
-          const points = shape.starPoints || 5;
-          const innerRatio = shape.innerRadiusRatio || 0.45;
-          const step = Math.PI / points;
-
-          for (let i = 0; i < points * 2; i++) {
-            const rad = i * step - Math.PI / 2;
-            const r = i % 2 === 0 ? halfW : halfW * innerRatio;
-            const px = Math.cos(rad) * r;
-            const py = Math.sin(rad) * r;
-            if (i === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-          }
-          ctx.closePath();
-          break;
-        }
-      }
-
-      ctx.fill();
-      ctx.stroke();
-
-      // If selected, draw transform bounding box, rotation stem, and corner handles
-      if (isSelected) {
-        // Dashed bounding box
-        ctx.strokeStyle = '#818cf8';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([4, 4]);
-        ctx.strokeRect(-halfW, -halfH, shape.width, shape.height);
-        ctx.setLineDash([]);
-
-        // Rotation stem line
-        ctx.beginPath();
-        ctx.moveTo(0, -halfH);
-        ctx.lineTo(0, -halfH - 26);
-        ctx.strokeStyle = '#818cf8';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        // Rotation handle (outer circle + inner dot)
-        ctx.beginPath();
-        ctx.arc(0, -halfH - 26, 7.5, 0, Math.PI * 2);
-        ctx.fillStyle = '#4f46e5';
+      } else {
+        ctx.fillStyle = fillColor;
+        ctx.strokeStyle = isSelected ? '#6366f1' : '#64748b';
+        ctx.lineWidth = (isSelected ? 3 : 1.5) * ui;
+        traceShapePath(ctx, shape);
         ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.arc(0, -halfH - 26, 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = '#ffffff';
-        ctx.fill();
-
-        // 4 Corner scale handles
-        const corners = [
-          { x: -halfW, y: -halfH }, // TL
-          { x: halfW, y: -halfH },  // TR
-          { x: halfW, y: halfH },   // BR
-          { x: -halfW, y: halfH },  // BL
-        ];
-
-        corners.forEach((c) => {
-          ctx.fillStyle = '#ffffff';
-          ctx.strokeStyle = '#4f46e5';
-          ctx.lineWidth = 2;
-          ctx.fillRect(c.x - 4.5, c.y - 4.5, 9, 9);
-          ctx.strokeRect(c.x - 4.5, c.y - 4.5, 9, 9);
-        });
-
-        // Center pivot point
-        ctx.fillStyle = '#6366f1';
-        ctx.beginPath();
-        ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1;
         ctx.stroke();
       }
-
       ctx.restore();
 
-      // Draw depth badge above shape
+      // Depth badge above shape
       ctx.save();
+      ctx.font = `bold ${10 * ui}px JetBrains Mono, monospace`;
+      const label = `Z: ${Math.round(shape.depth * 100)}%`;
+      const textW = ctx.measureText(label).width + 10 * ui;
+      const textH = 16 * ui;
+      const badgeY = shape.y - halfH - 20 * ui;
       ctx.fillStyle = isSelected ? '#6366f1' : '#1e293b';
-      ctx.font = 'bold 10px JetBrains Mono, monospace';
-      const text = `Z: ${Math.round(shape.depth * 100)}%`;
-      const metrics = ctx.measureText(text);
-      const textW = metrics.width + 10;
-      const textH = 16;
-      ctx.fillRect(shape.x - textW / 2, shape.y - halfH - 20, textW, textH);
+      ctx.fillRect(shape.x - textW / 2, badgeY, textW, textH);
       ctx.fillStyle = '#f8fafc';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(text, shape.x, shape.y - halfH - 12);
+      ctx.fillText(label, shape.x, badgeY + textH / 2);
+      ctx.restore();
+    }
+
+    // Selection chrome is drawn last so no later layer can hide the handles
+    if (selected) {
+      const halfW = selected.width / 2;
+      const halfH = selected.height / 2;
+
+      ctx.save();
+      ctx.translate(selected.x, selected.y);
+      ctx.rotate((selected.rotation * Math.PI) / 180);
+
+      ctx.strokeStyle = '#818cf8';
+      ctx.lineWidth = 1.5 * ui;
+      ctx.setLineDash([4 * ui, 4 * ui]);
+      ctx.strokeRect(-halfW, -halfH, selected.width, selected.height);
+      ctx.setLineDash([]);
+
+      // Rotation stem + handle
+      const stem = ROTATE_STEM * ui;
+      ctx.beginPath();
+      ctx.moveTo(0, -halfH);
+      ctx.lineTo(0, -halfH - stem);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(0, -halfH - stem, 7.5 * ui, 0, Math.PI * 2);
+      ctx.fillStyle = '#4f46e5';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2 * ui;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, -halfH - stem, 2.5 * ui, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      // Corner scale handles
+      const hs = 9 * ui;
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#4f46e5';
+      ctx.lineWidth = 2 * ui;
+      for (const [cx, cy] of [
+        [-halfW, -halfH],
+        [halfW, -halfH],
+        [halfW, halfH],
+        [-halfW, halfH],
+      ]) {
+        ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+        ctx.strokeRect(cx - hs / 2, cy - hs / 2, hs, hs);
+      }
+
+      // Centre pivot
+      ctx.fillStyle = '#6366f1';
+      ctx.beginPath();
+      ctx.arc(0, 0, 3.5 * ui, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = ui;
+      ctx.stroke();
       ctx.restore();
 
-      // If active drag on this shape, draw floating feedback badge
-      if (dragState && dragState.shapeId === shape.id) {
-        ctx.save();
-        ctx.font = 'bold 11px JetBrains Mono, monospace';
+      // Floating feedback badge while dragging
+      const drag = dragRef.current;
+      if (drag && drag.shapeId === selected.id) {
         let badgeText = '';
-        if (dragState.mode === 'rotate') {
-          badgeText = `🔄 ${shape.rotation}°`;
-        } else if (dragState.mode === 'scale') {
-          badgeText = `📐 ${shape.width} × ${shape.height}px`;
-        } else if (dragState.mode === 'move') {
-          badgeText = `📍 ${shape.x}, ${shape.y}`;
-        }
+        if (drag.mode === 'rotate') badgeText = `🔄 ${selected.rotation}°`;
+        else if (drag.mode === 'scale') badgeText = `📐 ${selected.width} × ${selected.height}px`;
+        else badgeText = `📍 ${selected.x}, ${selected.y}`;
 
-        if (badgeText) {
-          const m = ctx.measureText(badgeText);
-          const bw = m.width + 14;
-          const bh = 22;
-          const by = shape.y + halfH + 16;
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-          ctx.strokeStyle = '#6366f1';
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.roundRect(shape.x - bw / 2, by, bw, bh, 6);
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.fillStyle = '#38bdf8';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(badgeText, shape.x, by + bh / 2);
-        }
+        ctx.save();
+        ctx.font = `bold ${11 * ui}px JetBrains Mono, monospace`;
+        const bw = ctx.measureText(badgeText).width + 14 * ui;
+        const bh = 22 * ui;
+        const by = selected.y + halfH + 16 * ui;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+        ctx.strokeStyle = '#6366f1';
+        ctx.lineWidth = 1.5 * ui;
+        ctx.beginPath();
+        ctx.roundRect(selected.x - bw / 2, by, bw, bh, 6 * ui);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#38bdf8';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeText, selected.x, by + bh / 2);
         ctx.restore();
       }
-    });
-  }, [shapes, selectedShapeId, canvasWidth, canvasHeight, dragState]);
+    }
+  }, []);
 
-  // Handle mousedown on canvas
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const requestDraw = useCallback(() => {
+    if (drawRafRef.current === null) {
+      drawRafRef.current = requestAnimationFrame(draw);
+    }
+  }, [draw]);
+
+  // Prop-driven redraws are synchronous so resizing the backing store never flashes blank
+  useLayoutEffect(() => {
+    draw();
+  }, [draw, shapes, selectedShapeId, canvasWidth, canvasHeight, pixelW, pixelH]);
+
+  // Keep handle sizes constant on screen: logical units per displayed CSS pixel
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const measure = () => {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const ui = Math.min(8, Math.max(0.5, dimsRef.current.width / rect.width));
+      if (Math.abs(ui - uiScaleRef.current) > 0.01) {
+        uiScaleRef.current = ui;
+        requestDraw();
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [canvasWidth, canvasHeight, requestDraw]);
+
+  // Redraw text once web fonts are available
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.fonts) return;
+    const refresh = () => {
+      clearTextLayoutCache();
+      requestDraw();
+    };
+    document.fonts.ready.then(refresh);
+    document.fonts.addEventListener('loadingdone', refresh);
+    return () => document.fonts.removeEventListener('loadingdone', refresh);
+  }, [requestDraw]);
+
+  // Native non-passive wheel listener so preventDefault works (React's onWheel is passive)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const onWheel = (e: WheelEvent) => {
+      const id = selectedIdRef.current;
+      if (!id) return;
+      const shape = shapesRef.current.find((s) => s.id === id);
+      if (!shape) return;
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.05 : 0.95;
+      const { width: cw, height: ch } = dimsRef.current;
+      const scale = clampUniformScale(factor, shape.width, shape.height, cw, ch);
+      onUpdateRef.current(shape.id, {
+        width: Math.round(shape.width * scale),
+        height: Math.round(shape.height * scale),
+      });
+    };
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', onWheel);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (drawRafRef.current !== null) cancelAnimationFrame(drawRafRef.current);
+    },
+    []
+  );
+
+  const beginDrag = (
+    e: React.PointerEvent<HTMLCanvasElement>,
+    mode: DragMode,
+    shape: ShapeObject,
+    x: number,
+    y: number,
+    extra?: Partial<DragState>
+  ) => {
+    dragRef.current = {
+      mode,
+      shapeId: shape.id,
+      startX: x,
+      startY: y,
+      origX: shape.x,
+      origY: shape.y,
+      origW: shape.width,
+      origH: shape.height,
+      origRotation: shape.rotation,
+      ...extra,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    requestDraw();
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.button !== 0) return;
     const { x, y } = getCanvasCoords(e);
+    const ui = uiScaleRef.current;
+    const list = shapesRef.current;
 
-    // 1. If there is a selected shape, first test its interactive handles
-    const selectedShape = shapes.find((s) => s.id === selectedShapeId);
-    if (selectedShape) {
-      const { u, v } = toLocalCoords(
-        x,
-        y,
-        selectedShape.x,
-        selectedShape.y,
-        selectedShape.rotation
-      );
-      const halfW = selectedShape.width / 2;
-      const halfH = selectedShape.height / 2;
-
-      // Check rotation handle at (0, -halfH - 26)
-      const rotDist = Math.hypot(u, v - (-halfH - 26));
-      if (rotDist <= 14) {
-        setDragState({
-          mode: 'rotate',
-          shapeId: selectedShape.id,
-          startX: x,
-          startY: y,
-          origX: selectedShape.x,
-          origY: selectedShape.y,
-          origW: selectedShape.width,
-          origH: selectedShape.height,
-          origRotation: selectedShape.rotation,
+    // 1. Handles / body of the already-selected shape take priority
+    const selected = list.find((s) => s.id === selectedIdRef.current);
+    if (selected) {
+      const handle = hitHandle(selected, x, y, ui);
+      if (handle === 'rotate') {
+        beginDrag(e, 'rotate', selected, x, y);
+        return;
+      }
+      if (handle) {
+        beginDrag(e, 'scale', selected, x, y, {
+          corner: handle,
+          origDist: Math.hypot(selected.width / 2, selected.height / 2),
         });
         return;
       }
-
-      // Check corner scale handles (TL, TR, BR, BL)
-      const tlDist = Math.hypot(u - (-halfW), v - (-halfH));
-      const trDist = Math.hypot(u - halfW, v - (-halfH));
-      const brDist = Math.hypot(u - halfW, v - halfH);
-      const blDist = Math.hypot(u - (-halfW), v - halfH);
-
-      const hitCorner = (corner: 'tl' | 'tr' | 'br' | 'bl') => {
-        setDragState({
-          mode: 'scale',
-          shapeId: selectedShape.id,
-          startX: x,
-          startY: y,
-          origX: selectedShape.x,
-          origY: selectedShape.y,
-          origW: selectedShape.width,
-          origH: selectedShape.height,
-          origRotation: selectedShape.rotation,
-          corner,
-          origDist: Math.hypot(halfW, halfH),
-        });
-      };
-
-      if (tlDist <= 12) {
-        hitCorner('tl');
-        return;
-      }
-      if (trDist <= 12) {
-        hitCorner('tr');
-        return;
-      }
-      if (brDist <= 12) {
-        hitCorner('br');
-        return;
-      }
-      if (blDist <= 12) {
-        hitCorner('bl');
-        return;
-      }
-
-      // Check if clicked inside selected shape body
-      if (Math.abs(u) <= halfW + 4 && Math.abs(v) <= halfH + 4) {
-        setDragState({
-          mode: 'move',
-          shapeId: selectedShape.id,
-          startX: x,
-          startY: y,
-          origX: selectedShape.x,
-          origY: selectedShape.y,
-          origW: selectedShape.width,
-          origH: selectedShape.height,
-          origRotation: selectedShape.rotation,
-        });
+      if (isInsideBody(selected, x, y, 4 * ui)) {
+        beginDrag(e, 'move', selected, x, y);
         return;
       }
     }
 
     // 2. Hit-test other shapes from top layer to bottom
-    for (let i = shapes.length - 1; i >= 0; i--) {
-      const shape = shapes[i];
-      const { u, v } = toLocalCoords(x, y, shape.x, shape.y, shape.rotation);
-      const halfW = shape.width / 2;
-      const halfH = shape.height / 2;
-
-      let isHit = false;
-      if (shape.type === 'circle') {
-        isHit = (u * u) / (halfW * halfW) + (v * v) / (halfH * halfH) <= 1.0;
-      } else {
-        isHit = Math.abs(u) <= halfW && Math.abs(v) <= halfH;
-      }
-
-      if (isHit) {
-        onSelectShape(shape.id);
-        setDragState({
-          mode: 'move',
-          shapeId: shape.id,
-          startX: x,
-          startY: y,
-          origX: shape.x,
-          origY: shape.y,
-          origW: shape.width,
-          origH: shape.height,
-          origRotation: shape.rotation,
-        });
+    for (let i = list.length - 1; i >= 0; i--) {
+      const shape = list[i];
+      if (hitShapeBody(shape, x, y)) {
+        onSelectRef.current(shape.id);
+        beginDrag(e, 'move', shape, x, y);
         return;
       }
     }
 
-    // 3. Clicked empty background
-    onSelectShape(null);
+    // 3. Empty background
+    onSelectRef.current(null);
   };
 
-  // Handle mousemove for hovering cursor updates and active dragging
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const { x, y } = getCanvasCoords(e);
+  const applyDrag = (drag: DragState, x: number, y: number, shiftKey: boolean) => {
+    const { width: cw, height: ch } = dimsRef.current;
+    let update: Partial<ShapeObject> | null = null;
 
-    // If active dragging:
-    if (dragState) {
-      if (dragState.mode === 'move') {
-        const deltaX = x - dragState.startX;
-        const deltaY = y - dragState.startY;
-        scheduleUpdate(dragState.shapeId, {
-          x: Math.round(dragState.origX + deltaX),
-          y: Math.round(dragState.origY + deltaY),
-        });
-      } else if (dragState.mode === 'rotate') {
-        const dx = x - dragState.origX;
-        const dy = y - dragState.origY;
-        let deg = Math.round((Math.atan2(dy, dx) * 180) / Math.PI + 90);
-        while (deg > 180) deg -= 360;
-        while (deg <= -180) deg += 360;
-        if (e.shiftKey) {
-          deg = Math.round(deg / 15) * 15;
-        }
-        scheduleUpdate(dragState.shapeId, { rotation: deg });
-      } else if (dragState.mode === 'scale') {
-        const { u, v } = toLocalCoords(
-          x,
-          y,
-          dragState.origX,
-          dragState.origY,
-          dragState.origRotation
-        );
-
-        if (e.shiftKey) {
-          // Free scale width and height independently
-          const newW = Math.max(20, Math.min(canvasWidth * 0.95, Math.round(2 * Math.abs(u))));
-          const newH = Math.max(20, Math.min(canvasHeight * 0.95, Math.round(2 * Math.abs(v))));
-          scheduleUpdate(dragState.shapeId, { width: newW, height: newH });
-        } else {
-          // Proportional uniform scale
-          const currentDist = Math.hypot(u, v);
-          const scale = currentDist / Math.max(1, dragState.origDist || 1);
-          const newW = Math.max(20, Math.min(canvasWidth * 0.95, Math.round(dragState.origW * scale)));
-          const newH = Math.max(20, Math.min(canvasHeight * 0.95, Math.round(dragState.origH * scale)));
-          scheduleUpdate(dragState.shapeId, { width: newW, height: newH });
-        }
+    if (drag.mode === 'move') {
+      update = {
+        x: Math.round(drag.origX + (x - drag.startX)),
+        y: Math.round(drag.origY + (y - drag.startY)),
+      };
+    } else if (drag.mode === 'rotate') {
+      let deg = Math.round((Math.atan2(y - drag.origY, x - drag.origX) * 180) / Math.PI + 90);
+      while (deg > 180) deg -= 360;
+      while (deg <= -180) deg += 360;
+      if (shiftKey) deg = Math.round(deg / 15) * 15;
+      update = { rotation: deg };
+    } else {
+      const { u, v } = toLocalCoords(x, y, drag.origX, drag.origY, drag.origRotation);
+      if (shiftKey) {
+        // Free scale width and height independently
+        update = {
+          width: Math.max(MIN_SHAPE_SIZE, Math.min(cw * 0.95, Math.round(2 * Math.abs(u)))),
+          height: Math.max(MIN_SHAPE_SIZE, Math.min(ch * 0.95, Math.round(2 * Math.abs(v)))),
+        };
+      } else {
+        // Proportional uniform scale
+        const raw = Math.hypot(u, v) / Math.max(1, drag.origDist || 1);
+        const scale = clampUniformScale(raw, drag.origW, drag.origH, cw, ch);
+        update = {
+          width: Math.round(drag.origW * scale),
+          height: Math.round(drag.origH * scale),
+        };
       }
+    }
+
+    overrideRef.current = { id: drag.shapeId, update };
+    requestDraw();
+
+    // Push to app state at a modest rate so the inspector tracks the drag without
+    // making every pointer event pay for a full app re-render
+    const now = performance.now();
+    if (now - lastCommitRef.current >= COMMIT_INTERVAL_MS) {
+      lastCommitRef.current = now;
+      onUpdateRef.current(drag.shapeId, update);
+    }
+  };
+
+  const updateHoverCursor = (x: number, y: number) => {
+    const ui = uiScaleRef.current;
+    const list = shapesRef.current;
+    const selected = list.find((s) => s.id === selectedIdRef.current);
+
+    if (selected) {
+      const handle = hitHandle(selected, x, y, ui);
+      if (handle === 'rotate') return setCursor('grab');
+      if (handle) return setCursor(getResizeCursor(CORNER_ANGLES[handle], selected.rotation));
+      if (isInsideBody(selected, x, y, 0)) return setCursor('move');
+    }
+
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (hitShapeBody(list[i], x, y)) return setCursor('pointer');
+    }
+    setCursor('default');
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const { x, y } = getCanvasCoords(e);
+    const drag = dragRef.current;
+    if (drag) {
+      applyDrag(drag, x, y, e.shiftKey);
       return;
     }
-
-    // Dynamic hover cursor when not dragging
-    const selectedShape = shapes.find((s) => s.id === selectedShapeId);
-    if (selectedShape) {
-      const { u, v } = toLocalCoords(
-        x,
-        y,
-        selectedShape.x,
-        selectedShape.y,
-        selectedShape.rotation
-      );
-      const halfW = selectedShape.width / 2;
-      const halfH = selectedShape.height / 2;
-
-      // Rotation handle
-      if (Math.hypot(u, v - (-halfH - 26)) <= 14) {
-        canvas.style.cursor = 'grab';
-        return;
-      }
-
-      // Corners
-      if (Math.hypot(u - (-halfW), v - (-halfH)) <= 12) {
-        canvas.style.cursor = getResizeCursor(-135, selectedShape.rotation);
-        return;
-      }
-      if (Math.hypot(u - halfW, v - (-halfH)) <= 12) {
-        canvas.style.cursor = getResizeCursor(-45, selectedShape.rotation);
-        return;
-      }
-      if (Math.hypot(u - halfW, v - halfH) <= 12) {
-        canvas.style.cursor = getResizeCursor(45, selectedShape.rotation);
-        return;
-      }
-      if (Math.hypot(u - (-halfW), v - halfH) <= 12) {
-        canvas.style.cursor = getResizeCursor(135, selectedShape.rotation);
-        return;
-      }
-
-      // Inside selected shape body
-      if (Math.abs(u) <= halfW && Math.abs(v) <= halfH) {
-        canvas.style.cursor = 'move';
-        return;
-      }
-    }
-
-    // Over any other shape
-    for (let i = shapes.length - 1; i >= 0; i--) {
-      const shape = shapes[i];
-      const { u, v } = toLocalCoords(x, y, shape.x, shape.y, shape.rotation);
-      if (Math.abs(u) <= shape.width / 2 && Math.abs(v) <= shape.height / 2) {
-        canvas.style.cursor = 'pointer';
-        return;
-      }
-    }
-
-    canvas.style.cursor = 'default';
+    updateHoverCursor(x, y);
   };
 
-  const handleMouseUp = () => {
-    // Flush any pending RAF update immediately
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
+  const finishDrag = () => {
+    const override = overrideRef.current;
+    dragRef.current = null;
+    overrideRef.current = null;
+    if (override) {
+      onUpdateRef.current(override.id, override.update);
     }
-    if (pendingUpdateRef.current) {
-      onUpdateShape(pendingUpdateRef.current.id, pendingUpdateRef.current.update);
-      pendingUpdateRef.current = null;
-    }
-    setDragState(null);
-  };
-
-  // Mouse wheel zooms/scales the selected shape up or down smoothly
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
-    if (!selectedShapeId) return;
-    const shape = shapes.find((s) => s.id === selectedShapeId);
-    if (!shape) return;
-
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.05 : 0.95;
-    const newW = Math.max(20, Math.min(canvasWidth * 0.95, Math.round(shape.width * factor)));
-    const newH = Math.max(20, Math.min(canvasHeight * 0.95, Math.round(shape.height * factor)));
-    onUpdateShape(shape.id, { width: newW, height: newH });
+    requestDraw();
   };
 
   return (
@@ -591,13 +668,13 @@ export const StageEditor: React.FC<StageEditorProps> = ({
       >
         <canvas
           ref={canvasRef}
-          width={canvasWidth}
-          height={canvasHeight}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onWheel={handleWheel}
+          width={pixelW}
+          height={pixelH}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={finishDrag}
+          onPointerCancel={finishDrag}
+          style={{ touchAction: 'none' }}
           className="w-full h-full object-contain rounded-lg shadow-2xl border border-slate-800"
         />
       </div>

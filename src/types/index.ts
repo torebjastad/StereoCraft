@@ -1,6 +1,9 @@
-export type ShapeType = 'circle' | 'square' | 'triangle' | 'star';
+export type ShapeType = 'circle' | 'square' | 'triangle' | 'star' | 'text';
 
 export type DepthProfileType = 'flat' | 'dome' | 'pyramid' | 'beveled';
+
+/** Font choices available to text shapes (resolved to CSS stacks in the browser layer). */
+export type TextFontId = 'sans' | 'impact' | 'serif' | 'mono' | 'rounded';
 
 export interface ShapeObject {
   id: string;
@@ -15,6 +18,10 @@ export interface ShapeObject {
   starPoints?: number; // for star shapes (default 5)
   innerRadiusRatio?: number; // for star shapes (default 0.5)
   cornerRadius?: number; // for square/rect
+  text?: string; // for text shapes; '\n' separates lines
+  fontFamily?: TextFontId; // for text shapes (default 'sans')
+  fontBold?: boolean; // for text shapes (default true)
+  fontItalic?: boolean; // for text shapes (default false)
 }
 
 export type PatternType =
