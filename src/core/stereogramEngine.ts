@@ -443,15 +443,44 @@ export function drawGuideDots(
 
 /**
  * Calculates optimal stereogram optics (patternPeriod and maxDisparity)
- * tailored to canvas width and viewing ease:
- * - 'easy': 0.5x of base autotune (quickest convergence, minimal eye effort)
- * - 'medium': 0.75x of base autotune (balanced depth and comfort)
- * - 'hard': 1.0x of base autotune (full maximum 3D immersion and depth separation)
+ * tailored to canvas width, viewing ease, and application mode:
+ * - Studio mode:
+ *   - 'easy': 0.5x of base autotune (quickest convergence, minimal eye effort)
+ *   - 'medium': 0.75x of base autotune (balanced depth and comfort - DEFAULT for Studio)
+ *   - 'hard': 1.0x of base autotune (full maximum 3D immersion and depth separation)
+ * - Labyrinth mode:
+ *   - 'easy': 100px period, 15px disparity (effortless 3D lock for tracking the moving cube - DEFAULT for Labyrinth)
+ *   - 'medium': 140px period, 22px disparity (balanced 3D elevation and comfort)
+ *   - 'hard': 180px period, 30px disparity (maximum dramatic depth separation)
  */
 export function getAutotuneOptics(
   width: number,
-  ease: EaseOfView = 'easy'
+  ease: EaseOfView = 'easy',
+  mode: 'studio' | 'labyrinth' = 'studio'
 ): { patternPeriod: number; maxDisparity: number } {
+  if (mode === 'labyrinth') {
+    // In Labyrinth mode, the player tracks a real-time moving 3D cube.
+    // Disparity is tuned for comfortable stereopsis without diplopia during rapid navigation.
+    const scale = width > 1600 ? Math.min(1.3, width / 1600) : 1.0;
+    if (ease === 'easy') {
+      return {
+        patternPeriod: Math.round(100 * scale),
+        maxDisparity: Math.round(15 * scale),
+      };
+    } else if (ease === 'medium') {
+      return {
+        patternPeriod: Math.round(140 * scale),
+        maxDisparity: Math.round(22 * scale),
+      };
+    } else {
+      return {
+        patternPeriod: Math.round(180 * scale),
+        maxDisparity: Math.round(30 * scale),
+      };
+    }
+  }
+
+  // Studio Mode:
   const basePeriod = Math.max(90, Math.min(280, Math.round(width * 0.075 + 45)));
   const baseDisparity = Math.max(16, Math.min(52, Math.round(basePeriod * 0.185)));
 

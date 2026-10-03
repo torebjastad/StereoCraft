@@ -356,6 +356,29 @@ describe('stereogramEngine', () => {
       expect(defaultOptics.patternPeriod).toBe(explicitEasy.patternPeriod);
       expect(defaultOptics.maxDisparity).toBe(explicitEasy.maxDisparity);
     });
+
+    it('calculates labyrinth optics correctly for easy, medium, and hard', () => {
+      const easyLab = getAutotuneOptics(1200, 'easy', 'labyrinth');
+      const medLab = getAutotuneOptics(1200, 'medium', 'labyrinth');
+      const hardLab = getAutotuneOptics(1200, 'hard', 'labyrinth');
+
+      // Easy is 100px period and 15px max disparity
+      expect(easyLab.patternPeriod).toBe(100);
+      expect(easyLab.maxDisparity).toBe(15);
+
+      // Medium is 140px period and 22px max disparity
+      expect(medLab.patternPeriod).toBe(140);
+      expect(medLab.maxDisparity).toBe(22);
+
+      // Hard is 180px period and 30px max disparity
+      expect(hardLab.patternPeriod).toBe(180);
+      expect(hardLab.maxDisparity).toBe(30);
+
+      expect(easyLab.patternPeriod).toBeLessThan(medLab.patternPeriod);
+      expect(medLab.patternPeriod).toBeLessThan(hardLab.patternPeriod);
+      expect(easyLab.maxDisparity).toBeLessThan(medLab.maxDisparity);
+      expect(medLab.maxDisparity).toBeLessThan(hardLab.maxDisparity);
+    });
   });
 });
 

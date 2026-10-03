@@ -26,6 +26,7 @@ interface SettingsPanelProps {
   availableArea?: { width: number; height: number };
   easeOfView?: EaseOfView;
   onSelectEaseOfView?: (ease: EaseOfView) => void;
+  mode?: 'studio' | 'labyrinth';
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -39,6 +40,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   availableArea,
   easeOfView = 'easy',
   onSelectEaseOfView,
+  mode = 'studio',
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -151,11 +153,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <span className="text-xs font-bold text-slate-200">Ease of View</span>
               <div className="relative group">
                 <Info className="w-3.5 h-3.5 text-slate-400 hover:text-indigo-400 cursor-pointer transition" />
-                <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-64 p-3 rounded-xl bg-slate-900 border border-slate-700 text-[11px] text-slate-300 shadow-2xl z-50 pointer-events-none leading-relaxed">
+                <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-72 p-3 rounded-xl bg-slate-900 border border-slate-700 text-[11px] text-slate-300 shadow-2xl z-50 pointer-events-none leading-relaxed">
                   <strong className="text-white block mb-1">Viewing Ease vs. 3D Immersion:</strong>
-                  • <span className="text-emerald-400 font-semibold">Easy (0.5×)</span>: Half period & disparity. Eyes diverge effortlessly, snapping into 3D almost immediately with minimal eye strain.<br />
-                  • <span className="text-indigo-400 font-semibold">Medium (0.75×)</span>: Balanced depth separation and comfortable convergence.<br />
-                  • <span className="text-rose-400 font-semibold">Hard (1.0×)</span>: Full scale. Generates deep, dramatic 3D immersion and spatial depth, but requires stronger convergence control.
+                  • <span className="text-emerald-400 font-semibold">Easy {mode === 'labyrinth' ? '(Default)' : '(0.5×)'}</span>: {mode === 'labyrinth' ? '100px period & 15px disparity. Fast, effortless 3D lock for tracking the moving cube.' : 'Half period & disparity. Eyes diverge effortlessly, snapping into 3D with minimal eye strain.'}<br />
+                  • <span className="text-indigo-400 font-semibold">Medium {mode === 'studio' ? '(Default)' : '(0.75×)'}</span>: {mode === 'labyrinth' ? '140px period & 22px disparity. Balanced depth and comfortable movement.' : '3/4 scale. Balanced depth separation and comfortable convergence.'}<br />
+                  • <span className="text-rose-400 font-semibold">Hard (1.0×)</span>: {mode === 'labyrinth' ? '180px period & 30px disparity. Deep canyons and intense 3D ridges.' : 'Full scale. Deep, dramatic 3D immersion and maximum elevation.'}
                 </div>
               </div>
             </div>
@@ -388,7 +390,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 key={res.label}
                 onClick={() => {
                   onChangeResolution(res.w, res.h);
-                  const optics = getAutotuneOptics(res.w, easeOfView);
+                  const optics = getAutotuneOptics(res.w, easeOfView, mode);
                   onChangeConfig({
                     patternPeriod: optics.patternPeriod,
                     maxDisparity: optics.maxDisparity,

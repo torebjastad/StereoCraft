@@ -16,12 +16,13 @@ import {
   generateStereogram,
   renderStereogramRows,
   createImageDataHelper,
+  getAutotuneOptics,
 } from '../core/stereogramEngine.ts';
 import {
   renderTextDepth,
   measureTextWidth,
 } from '../core/textDepthRenderer.ts';
-import { StereogramConfig, PatternType } from '../types/index.ts';
+import { StereogramConfig, PatternType, EaseOfView } from '../types/index.ts';
 import {
   Play,
   RotateCcw,
@@ -43,6 +44,8 @@ interface LabyrinthGameProps {
   canvasWidth?: number;
   canvasHeight?: number;
   onChangeConfig?: (updated: Partial<StereogramConfig>) => void;
+  easeOfView?: EaseOfView;
+  onSelectEaseOfView?: (ease: EaseOfView) => void;
 }
 
 type Difficulty = 'easy' | 'medium' | 'hard';
@@ -107,6 +110,8 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
   canvasWidth = 800,
   canvasHeight = 600,
   onChangeConfig,
+  easeOfView = 'easy',
+  onSelectEaseOfView,
 }) => {
   const [difficulty, setDifficulty] = useState<Difficulty>('easy');
   const [gameState, setGameState] = useState<'idle' | 'playing' | 'won'>('idle');
@@ -191,43 +196,18 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
   const activeWidth = isFullscreen ? fullscreenDimensions.width : canvasWidth;
   const activeHeight = isFullscreen ? fullscreenDimensions.height : canvasHeight;
 
-  // Auto-tune pattern period & disparity (Default: 100px period, 15px maxDisparity for labyrinth)
+  // Auto-tune pattern period & disparity (Default: 100px period, 15px maxDisparity for labyrinth in easy mode)
   const activeConfig = useMemo(() => {
-    const basePeriod = config.patternPeriod ? config.patternPeriod : 100;
-    // For labyrinth, default maxDisparity is 15px
-    const baseDisparity = config.maxDisparity && config.maxDisparity <= 15 ? config.maxDisparity : 15;
-
-    if (!isFullscreen) {
-      return {
-        ...config,
-        patternPeriod: basePeriod,
-        maxDisparity: baseDisparity,
-      };
-    }
-    // Fullscreen scaling: Keep disparity comfortable (15-18px max) to prevent eye strain
-    let period = basePeriod;
-    let disparity = baseDisparity;
-    let grain = config.grainSize ?? 2;
-    if (activeWidth >= 3000) {
-      period = 130;
-      disparity = 18;
-      grain = 3;
-    } else if (activeWidth >= 2000) {
-      period = 115;
-      disparity = 16;
-      grain = 2;
-    } else {
-      period = 100;
-      disparity = 15;
-      grain = 2;
-    }
+    const optics = getAutotuneOptics(activeWidth, easeOfView, 'labyrinth');
+    const period = isFullscreen ? optics.patternPeriod : (config.patternPeriod ?? optics.patternPeriod);
+    const disparity = isFullscreen ? optics.maxDisparity : (config.maxDisparity ?? optics.maxDisparity);
     return {
       ...config,
       patternPeriod: period,
       maxDisparity: disparity,
-      grainSize: grain,
+      grainSize: config.grainSize ?? 2,
     };
-  }, [config, isFullscreen, activeWidth]);
+  }, [config, isFullscreen, activeWidth, easeOfView]);
 
   // High-performance dirty-scanline stereogram buffers
   const depthBufferRef = useRef<Float32Array | null>(null);
@@ -744,6 +724,33 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
                 <span>Inverted Ridges</span>
               </button>
             </div>
+
+            {/* 3D Ease of View Selector */}
+            {onSelectEaseOfView && (
+              <div className="flex items-center gap-1.5 pl-2 border-l border-slate-800">
+                <span className="text-[11px] font-bold text-slate-400">3D Ease:</span>
+                <div className="flex items-center p-0.5 rounded-lg bg-slate-900 border border-slate-800">
+                  {(['easy', 'medium', 'hard'] as EaseOfView[]).map((e) => (
+                    <button
+                      key={e}
+                      onClick={() => onSelectEaseOfView(e)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-bold transition cursor-pointer capitalize ${
+                        easeOfView === e
+                          ? e === 'easy'
+                            ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400/40'
+                            : e === 'medium'
+                            ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-400/40'
+                            : 'bg-rose-600 text-white shadow-sm ring-1 ring-rose-400/40'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title={`3D Ease of View: ${e.toUpperCase()} (${e === 'easy' ? '100px period / 15px disparity' : e === 'medium' ? '140px / 22px' : '180px / 30px'})`}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Live HUD Stats & Action Buttons */}
@@ -870,6 +877,30 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
               <span>Inverted</span>
             </button>
           </div>
+
+          {/* Ease of View in Fullscreen HUD */}
+          {onSelectEaseOfView && (
+            <div className="flex items-center p-0.5 rounded-lg bg-slate-900/80 border border-slate-800 shrink-0">
+              {(['easy', 'medium', 'hard'] as EaseOfView[]).map((e) => (
+                <button
+                  key={e}
+                  onClick={() => onSelectEaseOfView(e)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer capitalize ${
+                    easeOfView === e
+                      ? e === 'easy'
+                        ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400/40'
+                        : e === 'medium'
+                        ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-400/40'
+                        : 'bg-rose-600 text-white shadow-sm ring-1 ring-rose-400/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title={`3D Ease: ${e.toUpperCase()}`}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Quick Pattern Switcher in Fullscreen */}
           {onChangeConfig && (
