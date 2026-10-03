@@ -17,7 +17,17 @@ export interface ShapeObject {
   cornerRadius?: number; // for square/rect
 }
 
-export type PatternType = 'color-noise' | 'retro-90s' | 'cosmic' | 'organic-flow' | 'sand' | 'custom';
+export type PatternType =
+  | 'color-noise'
+  | 'retro-90s'
+  | 'cosmic'
+  | 'organic-flow'
+  | 'sand'
+  | 'emerald-moss'
+  | 'ocean-trench'
+  | 'volcanic-magma'
+  | 'marble-vein'
+  | 'custom';
 
 export type EaseOfView = 'easy' | 'medium' | 'hard';
 

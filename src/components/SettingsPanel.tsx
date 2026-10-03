@@ -4,7 +4,7 @@ import {
   PatternType,
   EaseOfView,
 } from '../types/index.ts';
-import { getAutotuneOptics } from '../core/stereogramEngine.ts';
+import { getAutotuneOptics, getDefaultGrainForPattern } from '../core/stereogramEngine.ts';
 import {
   Palette,
   Eye,
@@ -46,10 +46,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   const patterns: { id: PatternType; label: string; desc: string; icon: string }[] = [
     { id: 'sand', label: 'Desert Sand (Default)', desc: 'Warm terracotta & ochre stippling', icon: '🏜️' },
+    { id: 'emerald-moss', label: 'Emerald Moss', desc: 'Lush forest canopy & mossy jade', icon: '🌲' },
+    { id: 'ocean-trench', label: 'Ocean Abyss', desc: 'Deep aquatic turquoise & caustics', icon: '🌊' },
+    { id: 'volcanic-magma', label: 'Volcanic Magma', desc: 'Molten orange lava & glowing embers', icon: '🌋' },
+    { id: 'cosmic', label: 'Cosmic Nebula', desc: 'Deep violet, cyan & pinpoint stars', icon: '🌌' },
+    { id: 'marble-vein', label: 'Imperial Marble', desc: 'Veined stone & golden mineral veins', icon: '🏛️' },
+    { id: 'organic-flow', label: 'Organic Flow', desc: 'Smooth Perlin-noise marble waves', icon: '🧬' },
     { id: 'retro-90s', label: 'Retro 90s Neon', desc: 'Vibrant Magic Eye confetti palette', icon: '🎨' },
     { id: 'color-noise', label: 'Micro-Contrast Noise', desc: 'Saturated high-contrast RGB grain', icon: '✨' },
-    { id: 'cosmic', label: 'Cosmic Nebula', desc: 'Deep violet, cyan & pinpoint stars', icon: '🌌' },
-    { id: 'organic-flow', label: 'Organic Flow', desc: 'Smooth Perlin-noise marble waves', icon: '🌊' },
     { id: 'custom', label: 'Custom Texture', desc: 'Wrap your own image/wallpaper', icon: '🖼️' },
   ];
 
@@ -94,7 +98,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   if (p.id === 'custom' && !config.customImageData) {
                     fileInputRef.current?.click();
                   } else {
-                    onChangeConfig({ patternType: p.id });
+                    onChangeConfig({
+                      patternType: p.id,
+                      grainSize: getDefaultGrainForPattern(p.id),
+                    });
                   }
                 }}
                 className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${

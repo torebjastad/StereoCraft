@@ -6,7 +6,7 @@ import {
   PatternType,
   EaseOfView,
 } from './types/index.ts';
-import { getAutotuneOptics } from './core/stereogramEngine.ts';
+import { getAutotuneOptics, getDefaultGrainForPattern } from './core/stereogramEngine.ts';
 import { Header } from './components/Header.tsx';
 import { ShapePalette } from './components/ShapePalette.tsx';
 import { ShapeInspector } from './components/ShapeInspector.tsx';
@@ -114,7 +114,7 @@ const getInitialUrlState = () => {
       height: 900,
       period: 101,
       disparity: 19,
-      grain: 2,
+      grain: 1,
       pattern: 'sand' as const,
       isAutoFit: true,
       studioEase: defaultStudioEase,
@@ -132,23 +132,24 @@ const getInitialUrlState = () => {
   const studioEase: EaseOfView = hasValidEase && mode === 'studio' ? easeParam : defaultStudioEase;
   const labyrinthEase: EaseOfView = hasValidEase && mode === 'labyrinth' ? easeParam : defaultLabyrinthEase;
   const easeOfView: EaseOfView = mode === 'labyrinth' ? labyrinthEase : studioEase;
+  const grain = getDefaultGrainForPattern(pattern);
 
   const res = params.get('res');
   if (res === '4k') {
     const optics = getAutotuneOptics(3840, easeOfView, mode);
-    return { mode, width: 3840, height: 2160, period: optics.patternPeriod, disparity: optics.maxDisparity, grain: 3, pattern, isAutoFit: false, studioEase, labyrinthEase, easeOfView };
+    return { mode, width: 3840, height: 2160, period: optics.patternPeriod, disparity: optics.maxDisparity, grain, pattern, isAutoFit: false, studioEase, labyrinthEase, easeOfView };
   } else if (res === '2k') {
     const optics = getAutotuneOptics(2560, easeOfView, mode);
-    return { mode, width: 2560, height: 1440, period: optics.patternPeriod, disparity: optics.maxDisparity, grain: 3, pattern, isAutoFit: false, studioEase, labyrinthEase, easeOfView };
+    return { mode, width: 2560, height: 1440, period: optics.patternPeriod, disparity: optics.maxDisparity, grain, pattern, isAutoFit: false, studioEase, labyrinthEase, easeOfView };
   } else if (res === '1080p') {
     const optics = getAutotuneOptics(1920, easeOfView, mode);
-    return { mode, width: 1920, height: 1080, period: optics.patternPeriod, disparity: optics.maxDisparity, grain: 2, pattern, isAutoFit: false, studioEase, labyrinthEase, easeOfView };
+    return { mode, width: 1920, height: 1080, period: optics.patternPeriod, disparity: optics.maxDisparity, grain, pattern, isAutoFit: false, studioEase, labyrinthEase, easeOfView };
   } else if (res === 'hd') {
     const optics = getAutotuneOptics(1200, easeOfView, mode);
-    return { mode, width: 1200, height: 900, period: optics.patternPeriod, disparity: optics.maxDisparity, grain: 2, pattern, isAutoFit: false, studioEase, labyrinthEase, easeOfView };
+    return { mode, width: 1200, height: 900, period: optics.patternPeriod, disparity: optics.maxDisparity, grain, pattern, isAutoFit: false, studioEase, labyrinthEase, easeOfView };
   } else if (res === '800x600') {
     const optics = getAutotuneOptics(800, easeOfView, mode);
-    return { mode, width: 800, height: 600, period: optics.patternPeriod, disparity: optics.maxDisparity, grain: 2, pattern, isAutoFit: false, studioEase, labyrinthEase, easeOfView };
+    return { mode, width: 800, height: 600, period: optics.patternPeriod, disparity: optics.maxDisparity, grain, pattern, isAutoFit: false, studioEase, labyrinthEase, easeOfView };
   }
 
   // Default: Fit available area!
@@ -167,7 +168,7 @@ const getInitialUrlState = () => {
     height: availH,
     period: optics.patternPeriod,
     disparity: optics.maxDisparity,
-    grain: 2,
+    grain,
     pattern,
     isAutoFit: true,
     studioEase,

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { generateStereogram, renderStereogramRows, samplePatternColor, getAutotuneOptics } from '../stereogramEngine.ts';
+import {
+  generateStereogram,
+  renderStereogramRows,
+  samplePatternColor,
+  getAutotuneOptics,
+  getDefaultGrainForPattern,
+} from '../stereogramEngine.ts';
 import { renderDepthMap } from '../depthRenderer.ts';
 import { StereogramConfig, ShapeObject } from '../../types/index.ts';
 
@@ -182,7 +188,17 @@ describe('stereogramEngine', () => {
   it('guarantees periodic horizontal color sampling for seamless background continuity', () => {
     const period = 120;
     const grain = 2;
-    const patterns = ['color-noise', 'retro-90s', 'cosmic', 'organic-flow', 'sand'] as const;
+    const patterns = [
+      'color-noise',
+      'retro-90s',
+      'cosmic',
+      'organic-flow',
+      'sand',
+      'emerald-moss',
+      'ocean-trench',
+      'volcanic-magma',
+      'marble-vein',
+    ] as const;
 
     for (const pat of patterns) {
       for (let x = 10; x < 50; x += 10) {
@@ -378,6 +394,24 @@ describe('stereogramEngine', () => {
       expect(medLab.patternPeriod).toBeLessThan(hardLab.patternPeriod);
       expect(easyLab.maxDisparity).toBeLessThan(medLab.maxDisparity);
       expect(medLab.maxDisparity).toBeLessThan(hardLab.maxDisparity);
+    });
+  });
+
+  describe('getDefaultGrainForPattern', () => {
+    it('returns 2 for pure noise patterns and 1 for textured patterns', () => {
+      // Pure noise patterns should default to 2px grain
+      expect(getDefaultGrainForPattern('color-noise')).toBe(2);
+      expect(getDefaultGrainForPattern('retro-90s')).toBe(2);
+
+      // Textured patterns should default to 1px grain for crisp detail
+      expect(getDefaultGrainForPattern('sand')).toBe(1);
+      expect(getDefaultGrainForPattern('cosmic')).toBe(1);
+      expect(getDefaultGrainForPattern('organic-flow')).toBe(1);
+      expect(getDefaultGrainForPattern('emerald-moss')).toBe(1);
+      expect(getDefaultGrainForPattern('ocean-trench')).toBe(1);
+      expect(getDefaultGrainForPattern('volcanic-magma')).toBe(1);
+      expect(getDefaultGrainForPattern('marble-vein')).toBe(1);
+      expect(getDefaultGrainForPattern('custom')).toBe(1);
     });
   });
 });

@@ -17,6 +17,7 @@ import {
   renderStereogramRows,
   createImageDataHelper,
   getAutotuneOptics,
+  getDefaultGrainForPattern,
 } from '../core/stereogramEngine.ts';
 import {
   renderTextDepth,
@@ -56,12 +57,26 @@ const DIFFICULTY_SETTINGS: Record<Difficulty, { cols: number; rows: number; labe
   hard: { cols: 15, rows: 11, label: 'Hard (15×11)' },
 };
 
+export const LABYRINTH_TEXTURE_PROGRESSION: PatternType[] = [
+  'sand',
+  'emerald-moss',
+  'ocean-trench',
+  'volcanic-magma',
+  'cosmic',
+  'marble-vein',
+  'organic-flow',
+];
+
 const PATTERNS: { id: PatternType; label: string; icon: string }[] = [
   { id: 'sand', label: 'Sand', icon: '🏜️' },
-  { id: 'retro-90s', label: 'Retro 90s', icon: '🎨' },
-  { id: 'color-noise', label: 'Noise', icon: '✨' },
+  { id: 'emerald-moss', label: 'Moss', icon: '🌲' },
+  { id: 'ocean-trench', label: 'Ocean', icon: '🌊' },
+  { id: 'volcanic-magma', label: 'Magma', icon: '🌋' },
   { id: 'cosmic', label: 'Cosmic', icon: '🌌' },
-  { id: 'organic-flow', label: 'Flow', icon: '🌊' },
+  { id: 'marble-vein', label: 'Marble', icon: '🏛️' },
+  { id: 'organic-flow', label: 'Flow', icon: '🧬' },
+  { id: 'retro-90s', label: 'Retro', icon: '🎨' },
+  { id: 'color-noise', label: 'Noise', icon: '✨' },
 ];
 
 // Format stopwatch string: "00:14.2"
@@ -263,8 +278,19 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     }
   }, [difficulty]);
 
-  // Start new maze
-  const handleStartNewMaze = (newDiff: Difficulty = difficulty) => {
+  const [level, setLevel] = useState<number>(1);
+
+  // Start new maze level (advances texture and maze geometry)
+  const handleStartNewMaze = (newDiff: Difficulty = difficulty, isNextLevel: boolean = true) => {
+    const nextLvl = isNextLevel ? level + 1 : level;
+    if (isNextLevel) {
+      setLevel(nextLvl);
+      const nextPattern = LABYRINTH_TEXTURE_PROGRESSION[(nextLvl - 1) % LABYRINTH_TEXTURE_PROGRESSION.length];
+      onChangeConfig?.({
+        patternType: nextPattern,
+        grainSize: getDefaultGrainForPattern(nextPattern),
+      });
+    }
     const { cols, rows } = DIFFICULTY_SETTINGS[newDiff];
     const newMaze = generateMaze(cols, rows);
     setMaze(newMaze);
@@ -675,6 +701,9 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-600/20 border border-indigo-500/40 text-indigo-400 font-bold text-xs">
               <Eye className="w-3.5 h-3.5" />
               <span>Stereo Labyrinth 3D</span>
+              <span className="text-[10px] text-indigo-300 font-mono bg-indigo-500/30 px-1.5 py-0.5 rounded-md">
+                Lvl {level}
+              </span>
             </div>
 
             {/* Difficulty Selector */}
@@ -827,7 +856,7 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 px-4 py-2 rounded-2xl glass-panel border border-white/10 shadow-2xl backdrop-blur-xl">
           <div className="flex items-center gap-1.5 text-indigo-400 font-bold text-xs">
             <Eye className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Stereo Labyrinth 3D</span>
+            <span className="hidden sm:inline">Labyrinth Lvl {level}</span>
           </div>
 
           <div className="h-4 w-px bg-slate-700" />
@@ -910,7 +939,12 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
                 return (
                   <button
                     key={p.id}
-                    onClick={() => onChangeConfig({ patternType: p.id })}
+                    onClick={() =>
+                      onChangeConfig({
+                        patternType: p.id,
+                        grainSize: getDefaultGrainForPattern(p.id),
+                      })
+                    }
                     className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 ${
                       isSelected
                         ? 'bg-indigo-600 text-white shadow-sm'
@@ -1031,7 +1065,7 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
                 <Trophy className="w-8 h-8 text-slate-950" />
               </div>
               <h2 className="text-2xl font-black text-white tracking-tight mb-1">
-                Labyrinth Solved! 🎉
+                Level {level} Solved! 🎉
               </h2>
               <p className="text-xs text-slate-400 mb-4">
                 You navigated the stereoscopic 3D maze in:
@@ -1040,11 +1074,11 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
                 {formatTime(elapsedTime)}
               </div>
               <button
-                onClick={() => handleStartNewMaze()}
+                onClick={() => handleStartNewMaze(difficulty, true)}
                 className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-pink-600 text-white font-bold text-sm hover:brightness-110 shadow-lg shadow-indigo-600/40 transition active:scale-95 flex items-center gap-2 cursor-pointer"
               >
                 <Sparkles className="w-4 h-4" />
-                <span>Play Next Maze</span>
+                <span>Play Next Maze (Level {level + 1})</span>
               </button>
             </div>
           )}

@@ -61,6 +61,59 @@ const SAND_COLORS: [number, number, number][] = [
   [245, 230, 200], // Desert Cream
 ];
 
+// Emerald Moss & Deep Forest palette
+const EMERALD_MOSS_COLORS: [number, number, number][] = [
+  [18, 48, 28],    // Deep Spruce
+  [34, 94, 48],    // Forest Fern
+  [76, 140, 52],   // Moss Green
+  [142, 198, 65],  // Sunlit Lime
+  [82, 60, 36],    // Bark Earth
+  [195, 235, 175], // Dew Mint
+];
+
+// Ocean Abyss & Bioluminescent Caustics palette
+const OCEAN_TRENCH_COLORS: [number, number, number][] = [
+  [8, 18, 42],     // Midnight Abyss
+  [14, 46, 88],    // Deep Trench
+  [20, 110, 138],  // Bioluminescent Teal
+  [48, 168, 186],  // Azure Wave
+  [102, 218, 204], // Seafoam Cyan
+  [210, 245, 245], // Pearl Crest
+];
+
+// Volcanic Magma & Basalt palette
+const VOLCANIC_MAGMA_COLORS: [number, number, number][] = [
+  [20, 15, 18],    // Obsidian Basalt
+  [56, 32, 34],    // Cooled Crust
+  [145, 28, 22],   // Deep Ember Crimson
+  [228, 76, 16],   // Molten Lava Orange
+  [255, 172, 32],  // Bright Flame Gold
+  [255, 240, 180], // Incandescent Core
+];
+
+// Imperial Marble & Gold Veins palette
+const MARBLE_VEIN_COLORS: [number, number, number][] = [
+  [38, 42, 48],    // Charcoal Slate
+  [90, 96, 105],   // Pewter Ash
+  [160, 166, 175], // Dove Grey
+  [204, 168, 102], // Quartz Gold Vein
+  [242, 242, 245], // Alabaster White
+  [255, 255, 255], // Polished Marble
+];
+
+/**
+ * Returns the recommended dot / grain scale for a pattern.
+ * Pure noise patterns (color-noise, retro-90s) use 2px for binocular grain fusion.
+ * Textured patterns (sand, cosmic nebula, organic flow, emerald moss, ocean trench, volcanic magma, marble vein)
+ * use 1px for maximum crisp procedural detail.
+ */
+export function getDefaultGrainForPattern(pattern: PatternType): number {
+  if (pattern === 'color-noise' || pattern === 'retro-90s') {
+    return 2;
+  }
+  return 1;
+}
+
 /**
  * Procedural color sampler for pattern roots
  */
@@ -131,6 +184,46 @@ export function samplePatternColor(
       const combined = (randVal * 0.4 + noise * 0.6);
       const colorIdx = Math.min(SAND_COLORS.length - 1, Math.floor(combined * SAND_COLORS.length));
       return SAND_COLORS[colorIdx];
+    }
+
+    case 'emerald-moss': {
+      const n1 = smoothNoise2D(gx, gy, 0.07);
+      const n2 = smoothNoise2D(gx, gy, 0.18);
+      const fineGrain = pseudoRandom(gx, gy, 42) * 0.15;
+      const val = Math.min(1, Math.max(0, n1 * 0.55 + n2 * 0.3 + fineGrain));
+      const idx = Math.min(EMERALD_MOSS_COLORS.length - 1, Math.floor(val * EMERALD_MOSS_COLORS.length));
+      return EMERALD_MOSS_COLORS[idx];
+    }
+
+    case 'ocean-trench': {
+      const n1 = smoothNoise2D(gx, gy, 0.06);
+      const wave1 = Math.sin(gx * 0.12 + n1 * 8);
+      const wave2 = Math.cos(gy * 0.10 + n1 * 6);
+      const caustic = Math.abs(wave1 * wave2);
+      const speckle = pseudoRandom(gx, gy, 84) * 0.1;
+      const val = Math.min(1, Math.max(0, caustic * 0.65 + n1 * 0.25 + speckle));
+      const idx = Math.min(OCEAN_TRENCH_COLORS.length - 1, Math.floor(val * OCEAN_TRENCH_COLORS.length));
+      return OCEAN_TRENCH_COLORS[idx];
+    }
+
+    case 'volcanic-magma': {
+      const n1 = smoothNoise2D(gx, gy, 0.05);
+      const n2 = smoothNoise2D(gx, gy, 0.14);
+      const vein = 1.0 - Math.min(1.0, Math.abs(Math.sin((n1 * 12 + n2 * 4) * Math.PI)) * 1.5);
+      const heat = Math.min(1, Math.max(0, n1 * 0.4 + vein * 0.55 + pseudoRandom(gx, gy, 99) * 0.05));
+      const idx = Math.min(VOLCANIC_MAGMA_COLORS.length - 1, Math.floor(heat * VOLCANIC_MAGMA_COLORS.length));
+      return VOLCANIC_MAGMA_COLORS[idx];
+    }
+
+    case 'marble-vein': {
+      const n1 = smoothNoise2D(gx, gy, 0.04);
+      const n2 = smoothNoise2D(gx, gy, 0.12);
+      const marble = Math.sin((gx * 0.05 + gy * 0.05) + (n1 * 8 + n2 * 3));
+      const normalizedMarble = (marble + 1) * 0.5;
+      const crystal = pseudoRandom(gx, gy, 77) > 0.985 ? 0.3 : 0;
+      const val = Math.min(1, Math.max(0, normalizedMarble * 0.85 + crystal + pseudoRandom(gx, gy, 12) * 0.05));
+      const idx = Math.min(MARBLE_VEIN_COLORS.length - 1, Math.floor(val * MARBLE_VEIN_COLORS.length));
+      return MARBLE_VEIN_COLORS[idx];
     }
 
     case 'color-noise':
