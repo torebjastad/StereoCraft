@@ -89,6 +89,17 @@ export function scalePresetShape(
   };
 }
 
+export function scaleShapesForResolutionChange(
+  shapes: ShapeObject[],
+  prevWidth: number,
+  prevHeight: number,
+  newWidth: number,
+  newHeight: number
+): ShapeObject[] {
+  if (prevWidth === newWidth && prevHeight === newHeight) return shapes;
+  return shapes.map((s) => scalePresetShape(s, newWidth, newHeight, prevWidth, prevHeight));
+}
+
 const getInitialUrlState = () => {
   if (typeof window === 'undefined') {
     return { mode: 'studio' as const, width: 800, height: 600, period: 100, disparity: 18, grain: 2 };
@@ -140,36 +151,23 @@ export const App: React.FC = () => {
     width: initialUrlState.width,
     height: initialUrlState.height,
   });
+  const dimensionsRef = useRef<{ width: number; height: number }>(dimensions);
+  dimensionsRef.current = dimensions;
 
   // Scale shapes uniformly when changing resolution to preserve 1:1 aspect ratio and centering
+  // Decoupled from setDimensions updater to prevent React StrictMode double-transform side effects
   const handleChangeResolution = useCallback((newWidth: number, newHeight: number) => {
-    setDimensions((prev) => {
-      if (prev.width === newWidth && prev.height === newHeight) return prev;
-      const prevScale = Math.min(prev.width / 800, prev.height / 600);
-      const newScale = Math.min(newWidth / 800, newHeight / 600);
-      const ratio = newScale / prevScale;
+    const prevW = dimensionsRef.current.width;
+    const prevH = dimensionsRef.current.height;
 
-      const prevCx = prev.width / 2;
-      const prevCy = prev.height / 2;
-      const newCx = newWidth / 2;
-      const newCy = newHeight / 2;
+    if (prevW === newWidth && prevH === newHeight) return;
 
-      setShapes((prevShapes) =>
-        prevShapes.map((s) => {
-          const dx = s.x - prevCx;
-          const dy = s.y - prevCy;
-          return {
-            ...s,
-            x: Math.round(newCx + dx * ratio),
-            y: Math.round(newCy + dy * ratio),
-            width: Math.max(10, Math.round(s.width * ratio)),
-            height: Math.max(10, Math.round(s.height * ratio)),
-            cornerRadius: s.cornerRadius ? Math.max(2, Math.round(s.cornerRadius * ratio)) : undefined,
-          };
-        })
-      );
-      return { width: newWidth, height: newHeight };
-    });
+    dimensionsRef.current = { width: newWidth, height: newHeight };
+    setDimensions({ width: newWidth, height: newHeight });
+
+    setShapes((prevShapes) =>
+      scaleShapesForResolutionChange(prevShapes, prevW, prevH, newWidth, newHeight)
+    );
   }, []);
 
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);

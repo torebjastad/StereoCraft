@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scalePresetShape } from '../../App.tsx';
+import { scalePresetShape, scaleShapesForResolutionChange } from '../../App.tsx';
 import { ShapeObject } from '../../types/index.ts';
 
 describe('Preset and Resolution Scaling', () => {
@@ -63,5 +63,67 @@ describe('Preset and Resolution Scaling', () => {
     expect(scaled.y).toBe(342);
     expect(scaled.width).toBe(144);
     expect(scaled.height).toBe(144);
+  });
+
+  it('accurately scales and centers the constellation preset from 800x600 to 1200x900 (HD 4:3)', () => {
+    const constellation: ShapeObject[] = [
+      { id: 'st-c', type: 'star', x: 400, y: 300, width: 220, height: 220, rotation: 0, depth: 0.95, profile: 'dome' },
+      { id: 'st-1', type: 'circle', x: 200, y: 190, width: 80, height: 80, rotation: 0, depth: 0.6, profile: 'dome' },
+      { id: 'st-2', type: 'square', x: 600, y: 190, width: 70, height: 70, rotation: 45, depth: 0.5, profile: 'beveled' },
+      { id: 'st-3', type: 'triangle', x: 400, y: 480, width: 100, height: 90, rotation: 0, depth: 0.7, profile: 'pyramid' },
+    ];
+
+    const scaled = scaleShapesForResolutionChange(constellation, 800, 600, 1200, 900);
+
+    // Center star must be exactly at canvas center (1200/2 = 600, 900/2 = 450)
+    const star = scaled.find((s) => s.id === 'st-c')!;
+    expect(star.x).toBe(600);
+    expect(star.y).toBe(450);
+    expect(star.width).toBe(330); // 220 * 1.5
+    expect(star.height).toBe(330);
+
+    // Circle at top-left
+    const circle = scaled.find((s) => s.id === 'st-1')!;
+    expect(circle.x).toBe(300); // 600 - 200 * 1.5
+    expect(circle.y).toBe(285); // 450 - 110 * 1.5
+    expect(circle.width).toBe(120); // 80 * 1.5
+    expect(circle.height).toBe(120);
+
+    // Square at top-right
+    const square = scaled.find((s) => s.id === 'st-2')!;
+    expect(square.x).toBe(900); // 600 + 200 * 1.5
+    expect(square.y).toBe(285);
+    expect(square.width).toBe(105);
+    expect(square.height).toBe(105);
+
+    // Triangle at bottom center
+    const triangle = scaled.find((s) => s.id === 'st-3')!;
+    expect(triangle.x).toBe(600);
+    expect(triangle.y).toBe(720); // 450 + 180 * 1.5
+    expect(triangle.width).toBe(150);
+    expect(triangle.height).toBe(135);
+  });
+
+  it('performs clean round-trip resolution changes without drift', () => {
+    const star: ShapeObject = {
+      id: 'st-c',
+      type: 'star',
+      x: 400,
+      y: 300,
+      width: 220,
+      height: 220,
+      rotation: 0,
+      depth: 0.95,
+      profile: 'dome',
+    };
+
+    // 800x600 -> 1200x900 -> 800x600
+    const to1200 = scaleShapesForResolutionChange([star], 800, 600, 1200, 900);
+    const backTo800 = scaleShapesForResolutionChange(to1200, 1200, 900, 800, 600);
+
+    expect(backTo800[0].x).toBe(400);
+    expect(backTo800[0].y).toBe(300);
+    expect(backTo800[0].width).toBe(220);
+    expect(backTo800[0].height).toBe(220);
   });
 });
