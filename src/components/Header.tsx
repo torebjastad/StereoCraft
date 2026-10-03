@@ -65,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="font-extrabold text-base tracking-tight text-white flex items-center gap-1.5">
-                StereoMagic <span className="text-xs px-2 py-0.5 rounded-md font-semibold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">PRO</span>
+                StereoCraft <span className="text-xs px-2 py-0.5 rounded-md font-semibold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">PRO</span>
               </h1>
             </div>
             <p className="text-[11px] text-slate-400 font-medium">3D Autostereogram Suite</p>

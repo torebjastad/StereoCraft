@@ -1,4 +1,4 @@
-# StereoMagic Studio 👁️✨
+# StereoCraft 👁️✨
 
 > A modern, sleek web platform for creating, tuning, and viewing 3D autostereograms (Magic Eye / SIRDS & SIS) using the Thimbleby-Inglis-Witten symmetric equivalence class algorithm.
 

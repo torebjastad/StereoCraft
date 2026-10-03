@@ -177,7 +177,7 @@ $$\frac{\partial s}{\partial y} = 0$$
 Therefore, a localized depth modification spanning vertical interval $[y_{\text{min}}, y_{\text{max}}]$ affects **only** scanlines in that sub-interval. All scanlines outside $[y_{\text{min}}, y_{\text{max}}]$ remain mathematically identical and need not be recalculated.
 
 ### The Dirty-Scanline Algorithm
-StereoMagic Studio achieves fluid 60–120 FPS at 4K through a 5-step incremental rendering pipeline:
+StereoCraft achieves fluid 60–120 FPS at 4K through a 5-step incremental rendering pipeline:
 
 1. **Static Base Buffer Cache**:
    The static labyrinth depth map and full initial stereogram are computed once and stored in `cleanMazeDepthRef` and `activeImageDataRef`.

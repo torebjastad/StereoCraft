@@ -252,7 +252,7 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-4 py-2 rounded-2xl glass-panel border border-white/10 shadow-2xl backdrop-blur-xl max-w-[96vw] overflow-x-auto">
           <div className="flex items-center gap-1.5 text-indigo-400 font-bold text-xs shrink-0">
             <Eye className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">StereoMagic Studio</span>
+            <span className="hidden sm:inline">StereoCraft Studio</span>
           </div>
 
           <div className="h-4 w-px bg-slate-700 shrink-0" />

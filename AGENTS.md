@@ -1,12 +1,12 @@
-# AGENTS.md — Agent & Developer Instructions for StereoMagic Studio
+# AGENTS.md — Agent & Developer Instructions for StereoCraft
 
-Welcome! This document provides instructions, architectural rules, and operational guidelines for AI agents and human engineers working on the **StereoMagic Studio** codebase.
+Welcome! This document provides instructions, architectural rules, and operational guidelines for AI agents and human engineers working on the **StereoCraft** codebase.
 
 ---
 
 ## 1. Project Mission & Overview
 
-**StereoMagic Studio** is a high-performance web platform for creating, tuning, and viewing 3D autostereograms (Single Image Random Dot Stereograms — SIRDS, and Single Image Textured Stereograms — SIS).
+**StereoCraft** is a high-performance web platform for creating, tuning, and viewing 3D autostereograms (Single Image Random Dot Stereograms — SIRDS, and Single Image Textured Stereograms — SIS).
 
 Key goals:
 * Provide mathematically optimal stereogram generation based on the Thimbleby-Inglis-Witten algorithm.

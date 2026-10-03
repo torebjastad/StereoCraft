@@ -1,8 +1,8 @@
-# StereoMagic Studio Architecture
+# StereoCraft Architecture
 
 ## 1. System Overview
 
-StereoMagic Studio is built on a modular, decoupled pipeline where **scene definition**, **depth map synthesis**, **autostereogram compilation**, and **3D visualization** are completely independent layers.
+StereoCraft is built on a modular, decoupled pipeline where **scene definition**, **depth map synthesis**, **autostereogram compilation**, and **3D visualization** are completely independent layers.
 
 ```mermaid
 flowchart TD
