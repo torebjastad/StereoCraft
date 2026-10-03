@@ -37,6 +37,8 @@ import {
   ArrowRight,
   Maximize,
   Minimize,
+  Download,
+  Printer,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -47,6 +49,9 @@ interface LabyrinthGameProps {
   onChangeConfig?: (updated: Partial<StereogramConfig>) => void;
   easeOfView?: EaseOfView;
   onSelectEaseOfView?: (ease: EaseOfView) => void;
+  onStereogramRendered?: (canvas: HTMLCanvasElement) => void;
+  onExport?: () => void;
+  onPrint?: () => void;
 }
 
 type Difficulty = 'easy' | 'medium' | 'hard';
@@ -127,6 +132,9 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
   onChangeConfig,
   easeOfView = 'easy',
   onSelectEaseOfView,
+  onStereogramRendered,
+  onExport,
+  onPrint,
 }) => {
   const [difficulty, setDifficulty] = useState<Difficulty>('easy');
   const [gameState, setGameState] = useState<'idle' | 'playing' | 'won'>('idle');
@@ -468,7 +476,10 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     } else {
       ctx.putImageData(activeStereogram, 0, 0);
     }
-  }, [maze, bounds, activeWidth, activeHeight, activeConfig, labyrinthMode]);
+    if (onStereogramRendered) {
+      onStereogramRendered(canvas);
+    }
+  }, [maze, bounds, activeWidth, activeHeight, activeConfig, labyrinthMode, onStereogramRendered]);
 
   // Re-draw when spacebar peek toggles
   useEffect(() => {
@@ -1001,6 +1012,29 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
             >
               <Eye className="w-3.5 h-3.5" />
               <span>{activeConfig.showGuideDots ? 'Dots ON' : 'Dots OFF'}</span>
+            </button>
+          )}
+
+          {/* Export & Print in Fullscreen */}
+          {onExport && (
+            <button
+              onClick={onExport}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 hover:text-white font-semibold text-xs border border-indigo-500/40 transition active:scale-95 cursor-pointer shadow-sm"
+              title="Save Stereogram to PNG"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Save PNG</span>
+            </button>
+          )}
+
+          {onPrint && (
+            <button
+              onClick={onPrint}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs border border-slate-700 transition active:scale-95 cursor-pointer shadow-sm"
+              title="Print Stereogram (Ctrl+P)"
+            >
+              <Printer className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">Print</span>
             </button>
           )}
 

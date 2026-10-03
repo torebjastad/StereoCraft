@@ -13,6 +13,8 @@ import {
   CheckCircle2,
   Info,
   Maximize,
+  Download,
+  Printer,
 } from 'lucide-react';
 
 interface SettingsPanelProps {
@@ -27,6 +29,8 @@ interface SettingsPanelProps {
   easeOfView?: EaseOfView;
   onSelectEaseOfView?: (ease: EaseOfView) => void;
   mode?: 'studio' | 'labyrinth';
+  onExport?: () => void;
+  onPrint?: () => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -41,6 +45,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   easeOfView = 'easy',
   onSelectEaseOfView,
   mode = 'studio',
+  onExport,
+  onPrint,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -417,6 +423,37 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             );
           })}
         </div>
+
+        {/* Export & Print Center */}
+        {(onExport || onPrint) && (
+          <div className="pt-2 border-t border-slate-800 space-y-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Export & Print
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              {onExport && (
+                <button
+                  onClick={onExport}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/40 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-semibold transition active:scale-95 cursor-pointer shadow-sm"
+                  title="Download full resolution Stereogram PNG"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Save PNG</span>
+                </button>
+              )}
+              {onPrint && (
+                <button
+                  onClick={onPrint}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 text-xs font-semibold transition active:scale-95 cursor-pointer shadow-sm"
+                  title="Print stereogram directly or save as PDF (Ctrl+P)"
+                >
+                  <Printer className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Print</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </aside>
   );

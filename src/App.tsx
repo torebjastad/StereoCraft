@@ -14,6 +14,8 @@ import { StereogramViewport } from './components/StereogramViewport.tsx';
 import { SettingsPanel } from './components/SettingsPanel.tsx';
 import { ViewingGuideModal } from './components/ViewingGuideModal.tsx';
 import { LabyrinthGame } from './components/LabyrinthGame.tsx';
+import { PrintModal } from './components/PrintModal.tsx';
+import { downloadCanvasAsPng, getStereogramDownloadFilename } from './core/exportUtils.ts';
 
 // Initial Demo Scene: A stunning 3D composition with distinct depth planes
 const INITIAL_SHAPES: ShapeObject[] = [
@@ -413,6 +415,19 @@ export const App: React.FC = () => {
   }, [appMode, toggleStudioFullscreen]);
 
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
+  const [isPrintOpen, setIsPrintOpen] = useState<boolean>(false);
+
+  // Hotkey 'Ctrl+P' / 'Cmd+P' to open Print Modal
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        setIsPrintOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // Canvas references for image export
   const stereogramCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -700,24 +715,34 @@ export const App: React.FC = () => {
     }
   };
 
-  // Export handlers
-  const handleExportStereogram = () => {
+  // Export & Print handlers
+  const handleExportStereogram = useCallback(() => {
     const canvas = stereogramCanvasRef.current;
     if (!canvas) return;
-    const link = document.createElement('a');
-    link.download = `stereogram-${config.patternType}-${Date.now()}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-  };
+    const filename = getStereogramDownloadFilename({
+      patternType: config.patternType,
+      appMode,
+      width: dimensions.width,
+      height: dimensions.height,
+    });
+    downloadCanvasAsPng(canvas, filename);
+  }, [appMode, config.patternType, dimensions.width, dimensions.height]);
 
-  const handleExportDepth = () => {
+  const handleExportDepth = useCallback(() => {
     const canvas = depthCanvasRef.current;
     if (!canvas) return;
-    const link = document.createElement('a');
-    link.download = `stereogram-depthmap-${Date.now()}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-  };
+    const filename = getStereogramDownloadFilename({
+      appMode,
+      width: dimensions.width,
+      height: dimensions.height,
+      isDepthMap: true,
+    });
+    downloadCanvasAsPng(canvas, filename);
+  }, [appMode, dimensions.width, dimensions.height]);
+
+  const handleOpenPrint = useCallback(() => {
+    setIsPrintOpen(true);
+  }, []);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 font-sans">
@@ -739,6 +764,7 @@ export const App: React.FC = () => {
         onToggleViewingMode={(mode) => setConfig((prev) => ({ ...prev, viewingMode: mode }))}
         onOpenGuide={() => setIsGuideOpen(true)}
         onExport={handleExportStereogram}
+        onPrint={handleOpenPrint}
         onExportDepth={handleExportDepth}
         onLoadPreset={handleLoadPreset}
         onToggleFullscreen={appMode === 'studio' ? toggleStudioFullscreen : undefined}
@@ -822,6 +848,8 @@ export const App: React.FC = () => {
             onChangeConfig={(upd) => setConfig((prev) => ({ ...prev, ...upd }))}
             easeOfView={studioEase}
             onSelectEaseOfView={handleSelectEaseOfView}
+            onExport={handleExportStereogram}
+            onPrint={handleOpenPrint}
           />
 
           {/* Right Column: Optics, Disparity, Resolution & Engine Controls */}
@@ -838,6 +866,8 @@ export const App: React.FC = () => {
               easeOfView={studioEase}
               onSelectEaseOfView={handleSelectEaseOfView}
               mode="studio"
+              onExport={handleExportStereogram}
+              onPrint={handleOpenPrint}
             />
           )}
         </main>
@@ -851,6 +881,11 @@ export const App: React.FC = () => {
             onChangeConfig={(upd) => setConfig((prev) => ({ ...prev, ...upd }))}
             easeOfView={labyrinthEase}
             onSelectEaseOfView={handleSelectEaseOfView}
+            onStereogramRendered={(canvas) => {
+              stereogramCanvasRef.current = canvas;
+            }}
+            onExport={handleExportStereogram}
+            onPrint={handleOpenPrint}
           />
           {/* Compact Settings Panel on the side */}
           <SettingsPanel
@@ -862,6 +897,8 @@ export const App: React.FC = () => {
             easeOfView={labyrinthEase}
             onSelectEaseOfView={handleSelectEaseOfView}
             mode="labyrinth"
+            onExport={handleExportStereogram}
+            onPrint={handleOpenPrint}
           />
         </main>
       )}
@@ -871,6 +908,18 @@ export const App: React.FC = () => {
         isOpen={isGuideOpen}
         onClose={() => setIsGuideOpen(false)}
         onSwitchMode={(mode) => setConfig((prev) => ({ ...prev, viewingMode: mode }))}
+      />
+
+      {/* Print & Export Modal */}
+      <PrintModal
+        isOpen={isPrintOpen}
+        onClose={() => setIsPrintOpen(false)}
+        canvas={stereogramCanvasRef.current}
+        depthCanvas={depthCanvasRef.current}
+        config={config}
+        dimensions={dimensions}
+        appMode={appMode}
+        onDownloadPNG={handleExportStereogram}
       />
     </div>
   );

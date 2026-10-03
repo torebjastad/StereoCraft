@@ -4,6 +4,7 @@ import {
   HelpCircle,
   Sparkles,
   Download,
+  Printer,
   Maximize2,
   Minimize2,
   Layers,
@@ -19,7 +20,8 @@ interface HeaderProps {
   onToggleViewingMode: (mode: 'parallel' | 'cross-eyed') => void;
   onOpenGuide: () => void;
   onExport: () => void;
-  onExportDepth: () => void;
+  onPrint?: () => void;
+  onExportDepth?: () => void;
   onLoadPreset: (presetName: string) => void;
   onToggleFullscreen?: () => void;
   isFullscreen?: boolean;
@@ -32,6 +34,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleViewingMode,
   onOpenGuide,
   onExport,
+  onPrint,
   onExportDepth,
   onLoadPreset,
   onToggleFullscreen,
@@ -193,30 +196,41 @@ export const Header: React.FC<HeaderProps> = ({
           <span>I See It!</span>
         </button>
 
-        {appMode === 'studio' && (
-          <>
-            <div className="h-5 w-px bg-slate-800 mx-1" />
+        <div className="h-5 w-px bg-slate-800 mx-1" />
 
-            {/* Export Buttons */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={onExport}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-500 shadow-md shadow-indigo-600/30 transition active:scale-95"
-                title="Download full resolution Stereogram PNG"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Export 3D</span>
-              </button>
-              <button
-                onClick={onExportDepth}
-                className="p-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition"
-                title="Export Grayscale Depth Map"
-              >
-                <Download className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </>
-        )}
+        {/* Save PNG & Print Buttons */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={onExport}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-500 shadow-md shadow-indigo-600/30 transition active:scale-95 cursor-pointer"
+            title="Download full resolution Stereogram PNG"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Save</span>
+            <span>PNG</span>
+          </button>
+
+          {onPrint && (
+            <button
+              onClick={onPrint}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 text-xs font-semibold transition active:scale-95 cursor-pointer"
+              title="Print stereogram directly or save as PDF (Ctrl+P)"
+            >
+              <Printer className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Print</span>
+            </button>
+          )}
+
+          {appMode === 'studio' && onExportDepth && (
+            <button
+              onClick={onExportDepth}
+              className="p-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition cursor-pointer"
+              title="Download Grayscale Depth Map (PNG)"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
 
         <button
           onClick={onToggleFullscreen || toggleFullscreen}

@@ -20,6 +20,8 @@ import {
   Maximize,
   Maximize2,
   Minimize2,
+  Download,
+  Printer,
 } from 'lucide-react';
 
 interface StereogramViewportProps {
@@ -39,6 +41,8 @@ interface StereogramViewportProps {
   onChangeConfig?: (updated: Partial<StereogramConfig>) => void;
   easeOfView?: EaseOfView;
   onSelectEaseOfView?: (ease: EaseOfView) => void;
+  onExport?: () => void;
+  onPrint?: () => void;
 }
 
 export type ViewTab = 'stereogram' | 'stage' | 'depth' | 'split' | '3d-mesh';
@@ -60,6 +64,8 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
   onChangeConfig,
   easeOfView = 'easy',
   onSelectEaseOfView,
+  onExport,
+  onPrint,
 }) => {
   const [activeTab, setActiveTab] = useState<ViewTab>('stereogram');
   const [peekAmount, setPeekAmount] = useState<number>(0); // 0 = 100% stereogram, 1 = 100% depth map
@@ -69,6 +75,7 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
 
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
   const depthCanvasRef = useRef<HTMLCanvasElement>(null);
+  const cleanExportCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const displayAreaRef = useRef<HTMLDivElement>(null);
 
   const PATTERNS: { id: PatternType; label: string; icon: string }[] = [
@@ -170,6 +177,23 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
     ctx.putImageData(imgData, 0, 0);
     if (onDepthRendered) onDepthRendered(depthCanvas);
   }, [depthMap, canvasWidth, canvasHeight, onDepthRendered]);
+
+  // Maintain pristine, unblended stereogram canvas for clean PNG export & printing
+  useEffect(() => {
+    if (!cleanExportCanvasRef.current) {
+      cleanExportCanvasRef.current = document.createElement('canvas');
+    }
+    const cleanCanvas = cleanExportCanvasRef.current;
+    cleanCanvas.width = canvasWidth;
+    cleanCanvas.height = canvasHeight;
+    const ctx = cleanCanvas.getContext('2d');
+    if (ctx) {
+      ctx.putImageData(stereogramImageData, 0, 0);
+    }
+    if (onStereogramRendered) {
+      onStereogramRendered(cleanCanvas);
+    }
+  }, [stereogramImageData, canvasWidth, canvasHeight, onStereogramRendered]);
 
   // Handle Main Canvas Rendering with Peek and Wigglegram
   useEffect(() => {
@@ -354,6 +378,29 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
           <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0">
             {canvasWidth} × {canvasHeight}
           </span>
+
+          {/* Export & Print in Fullscreen */}
+          {onExport && (
+            <button
+              onClick={onExport}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 hover:text-white font-semibold text-xs border border-indigo-500/40 transition active:scale-95 cursor-pointer shadow-sm shrink-0"
+              title="Save Stereogram to PNG"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden xl:inline">Save PNG</span>
+            </button>
+          )}
+
+          {onPrint && (
+            <button
+              onClick={onPrint}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs border border-slate-700 transition active:scale-95 cursor-pointer shadow-sm shrink-0"
+              title="Print Stereogram (Ctrl+P)"
+            >
+              <Printer className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden xl:inline">Print</span>
+            </button>
+          )}
 
           {/* Exit Fullscreen Button */}
           {onToggleFullscreen && (
