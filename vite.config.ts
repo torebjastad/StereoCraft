@@ -8,4 +8,18 @@ export default defineConfig({
     tailwindcss(),
     react(),
   ],
+  define: {
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version || '1.0.0'),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
+  build: {
+    // Generate hashed filenames to prevent browser caching stale chunks
+    rollupOptions: {
+      output: {
+        entryFileNames: `assets/[name]-[hash].js`,
+        chunkFileNames: `assets/[name]-[hash].js`,
+        assetFileNames: `assets/[name]-[hash].[ext]`,
+      },
+    },
+  },
 });

@@ -238,6 +238,7 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
   const activeImageDataRef = useRef<ImageData | null>(null);
   const prevBallPosRef = useRef<{ x: number; y: number; radius: number; size?: number } | null>(null);
   const prevTextSecRef = useRef<number>(-1);
+  const hasRenderedInitialDotsRef = useRef<boolean>(false);
 
   // Generate Maze
   const [maze, setMaze] = useState<MazeGrid>(() => {
@@ -623,6 +624,7 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
         drawDualDotsOverlay(ctx, initialBall.x, initialBall.y);
       }
     }
+    hasRenderedInitialDotsRef.current = true;
     if (onStereogramRendered) {
       onStereogramRendered(canvas);
     }
@@ -641,8 +643,14 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
       renderFullPeeking(ctx, activeImg, depth, activeWidth, activeHeight);
     } else {
       ctx.putImageData(activeImg, 0, 0);
+
+      // Re-draw dual dots overlay when unpeeking
+      const pD = playerDebugRef.current;
+      if (pD.shape === 'dual-dots' && (pD.dualDotMode === 'overlay' || pD.dualDotMode === 'both')) {
+        drawDualDotsOverlay(ctx, ballRef.current.x, ballRef.current.y);
+      }
     }
-  }, [isPeeking, activeWidth, activeHeight]);
+  }, [isPeeking, activeWidth, activeHeight, drawDualDotsOverlay]);
 
   // High-Performance 60 FPS Game Loop
   useEffect(() => {
@@ -760,13 +768,42 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
               activeImg.data
             );
 
+            // If initial dual dots haven't been rendered yet, draw them now
+            if (!hasRenderedInitialDotsRef.current && !isPeeking) {
+              const pD = playerDebugRef.current;
+              if (pD.shape === 'dual-dots' && (pD.dualDotMode === 'overlay' || pD.dualDotMode === 'both')) {
+                drawDualDotsOverlay(ctx, currBall.x, currBall.y);
+              }
+              hasRenderedInitialDotsRef.current = true;
+            }
+
             // Blit text rows to canvas
             if (isPeeking) {
               renderPeekingRows(ctx, activeImg, depth, activeWidth, startRow, endRow);
             } else {
               const dirtyH = endRow - startRow + 1;
               ctx.putImageData(activeImg, 0, 0, 0, startRow, activeWidth, dirtyH);
+
+              // If timer text overlaps dot row, re-render dots overlay
+              const pD = playerDebugRef.current;
+              if (
+                pD.shape === 'dual-dots' &&
+                (pD.dualDotMode === 'overlay' || pD.dualDotMode === 'both') &&
+                currBall.y >= startRow - 20 &&
+                currBall.y <= endRow + 20
+              ) {
+                drawDualDotsOverlay(ctx, currBall.x, currBall.y);
+              }
             }
+          }
+
+          // Initial overlay ensure for idle state (runs once on mount / level start)
+          if (!hasRenderedInitialDotsRef.current && !isPeeking) {
+            const pD = playerDebugRef.current;
+            if (pD.shape === 'dual-dots' && (pD.dualDotMode === 'overlay' || pD.dualDotMode === 'both')) {
+              drawDualDotsOverlay(ctx, currBall.x, currBall.y);
+            }
+            hasRenderedInitialDotsRef.current = true;
           }
 
           // B. 3D Player Movement (instantaneous 60 FPS scanline update)
