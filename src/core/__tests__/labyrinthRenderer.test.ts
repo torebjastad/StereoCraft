@@ -11,6 +11,9 @@ import {
   eraseConeDepth,
   renderFloatingSquareDepth,
   eraseFloatingSquareDepth,
+  renderPlayerShapeDepth,
+  erasePlayerShapeDepth,
+  calculatePlayerDotSeparation,
   renderGoalStarDepth,
   renderInvertedMazeDepth,
   isPointOnRidge,
@@ -455,6 +458,62 @@ describe('labyrinthRenderer', () => {
     // Pixel outside square should be 0
     const outsideIdx = cy * width + (cx + Math.floor(size / 2) + 2);
     expect(depth[outsideIdx]).toBe(0);
+  });
+
+  it('renders and erases player shapes: circle, pyramid, and dual-dots', () => {
+    const depth = new Float32Array(width * height);
+    const cleanDepth = new Float32Array(width * height);
+    const cx = 200;
+    const cy = 150;
+    const size = 30;
+
+    // 1. Circle disc
+    renderPlayerShapeDepth(depth, width, height, cx, cy, size, 0.95, { shape: 'circle' });
+    const centerIdx = cy * width + cx;
+    expect(depth[centerIdx]).toBeCloseTo(0.95, 2);
+    // Erase circle
+    erasePlayerShapeDepth(depth, cleanDepth, width, height, cx, cy, size, { shape: 'circle' });
+    expect(depth[centerIdx]).toBe(0);
+
+    // 2. Pyramid (linear slope from apex)
+    renderPlayerShapeDepth(depth, width, height, cx, cy, size, 0.95, { shape: 'pyramid', baseZ: 0.50 });
+    expect(depth[centerIdx]).toBeCloseTo(0.95, 2);
+    const midSlopeIdx = cy * width + (cx + 7);
+    expect(depth[midSlopeIdx]).toBeLessThan(0.95);
+    expect(depth[midSlopeIdx]).toBeGreaterThan(0.50);
+    // Erase pyramid
+    erasePlayerShapeDepth(depth, cleanDepth, width, height, cx, cy, size, { shape: 'pyramid' });
+    expect(depth[centerIdx]).toBe(0);
+
+    // 3. Dual-dots separation formula
+    const period = 100;
+    const playerZ = 0.98;
+    const sepParallel = calculatePlayerDotSeparation(period, playerZ, 0.20, 'parallel');
+    expect(sepParallel).toBeLessThan(period); // Closer in parallel mode (80px)
+    expect(sepParallel).toBe(100 - Math.round(0.98 * 20)); // 80px
+
+    const sepCross = calculatePlayerDotSeparation(period, playerZ, 0.20, 'cross-eyed');
+    expect(sepCross).toBeGreaterThan(period); // Wider in cross-eyed mode (120px)
+
+    // 4. Render dual-dots into depth buffer
+    renderPlayerShapeDepth(depth, width, height, cx, cy, size, playerZ, {
+      shape: 'dual-dots',
+      patternPeriod: period,
+      depth: playerZ,
+    });
+    const halfSep = Math.round(sepParallel / 2);
+    const leftDotIdx = cy * width + (cx - halfSep);
+    const rightDotIdx = cy * width + (cx + halfSep);
+    expect(depth[leftDotIdx]).toBeGreaterThan(0.90);
+    expect(depth[rightDotIdx]).toBeGreaterThan(0.90);
+    // Erase dual-dots
+    erasePlayerShapeDepth(depth, cleanDepth, width, height, cx, cy, size, {
+      shape: 'dual-dots',
+      patternPeriod: period,
+      depth: playerZ,
+    });
+    expect(depth[leftDotIdx]).toBe(0);
+    expect(depth[rightDotIdx]).toBe(0);
   });
 });
 

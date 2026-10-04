@@ -7,10 +7,12 @@ import {
   getLabyrinthBounds,
   renderBaseMazeDepth,
   stepBallPhysics,
-  renderFloatingSquareDepth,
-  eraseFloatingSquareDepth,
+  renderPlayerShapeDepth,
+  erasePlayerShapeDepth,
+  calculatePlayerDotSeparation,
   renderLabyrinthStereoRows,
   generateLabyrinthStereogram,
+  PlayerShapeType,
   BallState,
   LabyrinthBounds,
 } from '../core/labyrinthRenderer.ts';
@@ -39,6 +41,8 @@ import {
   Minimize,
   Download,
   Printer,
+  Sliders,
+  X,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -121,6 +125,33 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
   });
   const [fallNotice, setFallNotice] = useState<boolean>(false);
   const fallTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Hidden Player Debug Panel (toggle via ` or Shift+D or HUD button)
+  const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false);
+  const [playerDebug, setPlayerDebug] = useState<{
+    shape: PlayerShapeType;
+    sizeMultiplier: number;
+    depth: number;
+    baseZ: number;
+    bevelRatio: number;
+    dualDotMode: 'overlay' | 'depth' | 'both';
+    dualDotColor: string;
+    dualDotRadius: number;
+  }>({
+    shape: 'square',
+    sizeMultiplier: 1.0,
+    depth: 0.98,
+    baseZ: 0.50,
+    bevelRatio: 0.35,
+    dualDotMode: 'overlay',
+    dualDotColor: '#6366f1',
+    dualDotRadius: 5,
+  });
+
+  const playerDebugRef = useRef(playerDebug);
+  useEffect(() => {
+    playerDebugRef.current = playerDebug;
+  }, [playerDebug]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -310,6 +341,15 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
         toggleFullscreen();
       }
 
+      // Hidden Debug Panel Toggle: ` (backtick / tilde) or Shift+D
+      if (
+        (e.key === '`' || e.key === '~' || (e.key === 'D' && e.shiftKey)) &&
+        !['input', 'textarea'].includes((document.activeElement?.tagName || '').toLowerCase())
+      ) {
+        e.preventDefault();
+        setShowDebugPanel((prev) => !prev);
+      }
+
       keysPressed.current[e.key.toLowerCase()] = true;
       keysPressed.current[e.key] = true;
 
@@ -414,6 +454,37 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     ctx.restore();
   };
 
+  // Helper to draw dual dots on 2D canvas overlay
+  const drawDualDotsOverlay = useCallback((ctx: CanvasRenderingContext2D, px: number, py: number) => {
+    const period = activeConfig.patternPeriod || 100;
+    const dispFraction = (activeConfig.maxDisparity ?? 15) / period;
+    const sep = calculatePlayerDotSeparation(period, playerDebugRef.current.depth, dispFraction, 'parallel');
+    const halfSep = Math.round(sep / 2);
+    const radius = playerDebugRef.current.dualDotRadius;
+    const color = playerDebugRef.current.dualDotColor;
+
+    ctx.save();
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+
+    // Left Dot
+    ctx.beginPath();
+    ctx.arc(px - halfSep, py, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Right Dot
+    ctx.beginPath();
+    ctx.arc(px + halfSep, py, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.restore();
+  }, [activeConfig.patternPeriod, activeConfig.maxDisparity]);
+
   const renderPeekingRows = (
     ctx: CanvasRenderingContext2D,
     activeImg: ImageData,
@@ -471,9 +542,32 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     const textY = isFullscreen ? Math.max(130, Math.floor(activeHeight * 0.11)) : Math.max(16, Math.floor(activeHeight * 0.035));
     renderTextDepth(depth, activeWidth, activeHeight, initialText, textX, textY, textScale, 0.96);
 
-    // 4. Render initial 3D player Floating Square / Cube into working depth buffer
-    const squareSize = initialBall.size || (labyrinthMode === 'inverted' ? Math.round(bounds.gap * 1.35) : bounds.gap);
-    renderFloatingSquareDepth(depth, activeWidth, activeHeight, initialBall.x, initialBall.y, squareSize, 0.96, { beveled: true });
+    // 4. Render initial 3D player shape into working depth buffer (if depth enabled)
+    const baseSquareSize = initialBall.size || (labyrinthMode === 'inverted' ? Math.round(bounds.gap * 1.35) : bounds.gap);
+    const playerSize = Math.round(baseSquareSize * playerDebug.sizeMultiplier);
+    const shouldRenderInDepth = playerDebug.shape !== 'dual-dots' || playerDebug.dualDotMode === 'depth' || playerDebug.dualDotMode === 'both';
+
+    if (shouldRenderInDepth) {
+      renderPlayerShapeDepth(
+        depth,
+        activeWidth,
+        activeHeight,
+        initialBall.x,
+        initialBall.y,
+        playerSize,
+        playerDebug.depth,
+        {
+          shape: playerDebug.shape,
+          beveled: true,
+          bevelRatio: playerDebug.bevelRatio,
+          baseZ: playerDebug.baseZ,
+          depth: playerDebug.depth,
+          patternPeriod: activeConfig.patternPeriod,
+          disparityRange: (activeConfig.maxDisparity ?? 15) / (activeConfig.patternPeriod || 100),
+          viewingMode: 'parallel',
+        }
+      );
+    }
 
     // 5. Generate active stereogram with continuous texture-coordinate engine
     const activeStereogram = generateLabyrinthStereogram(depth, activeWidth, activeHeight, {
@@ -490,11 +584,16 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
       renderFullPeeking(ctx, activeStereogram, depth, activeWidth, activeHeight);
     } else {
       ctx.putImageData(activeStereogram, 0, 0);
+
+      // If dual-dots overlay mode is enabled, draw the dual dots on top
+      if (playerDebug.shape === 'dual-dots' && (playerDebug.dualDotMode === 'overlay' || playerDebug.dualDotMode === 'both')) {
+        drawDualDotsOverlay(ctx, initialBall.x, initialBall.y);
+      }
     }
     if (onStereogramRendered) {
       onStereogramRendered(canvas);
     }
-  }, [maze, bounds, activeWidth, activeHeight, activeConfig, labyrinthMode, onStereogramRendered]);
+  }, [maze, bounds, activeWidth, activeHeight, activeConfig, labyrinthMode, playerDebug, onStereogramRendered]);
 
   // Re-draw when spacebar peek toggles
   useEffect(() => {
@@ -637,44 +736,88 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
             }
           }
 
-          // B. 3D Floating Square Movement (instantaneous 60 FPS scanline update - crisp unbroken walls)
+          // B. 3D Player Movement (instantaneous 60 FPS scanline update)
           const ballMoved = Math.abs(currBall.x - prevBall.x) > 0.01 || Math.abs(currBall.y - prevBall.y) > 0.01;
           if (ballMoved) {
-            const prevSize = prevBall.size || bounds.gap;
-            const currSize = currBall.size || bounds.gap;
+            const pD = playerDebugRef.current;
+            const basePrevSize = prevBall.size || bounds.gap;
+            const baseCurrSize = currBall.size || bounds.gap;
+            const prevSize = Math.round(basePrevSize * pD.sizeMultiplier);
+            const currSize = Math.round(baseCurrSize * pD.sizeMultiplier);
 
-            // Step 1: Erase previous floating square from working depth buffer
-            eraseFloatingSquareDepth(depth, cleanDepth, activeWidth, activeHeight, prevBall.x, prevBall.y, prevSize);
+            const isDualDotsOverlayOnly = pD.shape === 'dual-dots' && pD.dualDotMode === 'overlay';
+            const shouldRenderInDepth = !isDualDotsOverlayOnly;
 
-            // Step 2: Render new 3D floating square into working depth buffer
-            renderFloatingSquareDepth(depth, activeWidth, activeHeight, currBall.x, currBall.y, currSize, 0.96, { beveled: true });
+            const shapeOpts = {
+              shape: pD.shape,
+              beveled: true,
+              bevelRatio: pD.bevelRatio,
+              baseZ: pD.baseZ,
+              depth: pD.depth,
+              patternPeriod: activeConfig.patternPeriod,
+              disparityRange: (activeConfig.maxDisparity ?? 15) / (activeConfig.patternPeriod || 100),
+              viewingMode: 'parallel' as const,
+            };
 
-            // Step 3: Compute minimal dirty scanlines span for the square movement
-            const prevHalf = Math.ceil(prevSize / 2);
-            const currHalf = Math.ceil(currSize / 2);
-            const minY = Math.max(0, Math.floor(Math.min(prevBall.y - prevHalf, currBall.y - currHalf)) - 1);
-            const maxY = Math.min(activeHeight - 1, Math.ceil(Math.max(prevBall.y + prevHalf, currBall.y + currHalf)) + 1);
+            if (shouldRenderInDepth) {
+              // Step 1: Erase previous player shape from working depth buffer
+              erasePlayerShapeDepth(depth, cleanDepth, activeWidth, activeHeight, prevBall.x, prevBall.y, prevSize, shapeOpts);
 
-            // Step 4: Re-render only dirty scanlines through continuous texture-coordinate engine
-            renderLabyrinthStereoRows(
-              depth,
-              activeWidth,
-              activeHeight,
-              { ...activeConfig, viewingMode: 'parallel' },
-              minY,
-              maxY,
-              activeImg.data
-            );
+              // Step 2: Render new 3D player shape into working depth buffer
+              renderPlayerShapeDepth(depth, activeWidth, activeHeight, currBall.x, currBall.y, currSize, pD.depth, shapeOpts);
 
-            // Step 5: Blit dirty scanlines to canvas
-            if (isPeeking) {
-              renderPeekingRows(ctx, activeImg, depth, activeWidth, minY, maxY);
+              // Step 3: Compute minimal dirty scanlines span for the player shape movement
+              const prevHalf = Math.ceil(prevSize / 2);
+              const currHalf = Math.ceil(currSize / 2);
+              const minY = Math.max(0, Math.floor(Math.min(prevBall.y - prevHalf, currBall.y - currHalf)) - 2);
+              const maxY = Math.min(activeHeight - 1, Math.ceil(Math.max(prevBall.y + prevHalf, currBall.y + currHalf)) + 2);
+
+              // Step 4: Re-render only dirty scanlines through continuous texture-coordinate engine
+              renderLabyrinthStereoRows(
+                depth,
+                activeWidth,
+                activeHeight,
+                { ...activeConfig, viewingMode: 'parallel' },
+                minY,
+                maxY,
+                activeImg.data
+              );
+
+              // Step 5: Blit dirty scanlines to canvas
+              if (isPeeking) {
+                renderPeekingRows(ctx, activeImg, depth, activeWidth, minY, maxY);
+              } else {
+                ctx.putImageData(activeImg, 0, 0, 0, minY, activeWidth, maxY - minY + 1);
+              }
             } else {
-              ctx.putImageData(activeImg, 0, 0, 0, minY, activeWidth, maxY - minY + 1);
+              // Overlay-only dual-dots: restore previous 2D dot dirty rects from activeImg
+              const period = activeConfig.patternPeriod || 100;
+              const dispFrac = (activeConfig.maxDisparity ?? 15) / period;
+              const prevSep = calculatePlayerDotSeparation(period, pD.depth, dispFrac, 'parallel');
+              const prevHalfSep = Math.round(prevSep / 2);
+              const clearPad = pD.dualDotRadius + 6;
+
+              const clearRegion = (cx: number, cy: number) => {
+                const sx = Math.max(0, Math.floor(cx - clearPad));
+                const sy = Math.max(0, Math.floor(cy - clearPad));
+                const sw = Math.min(activeWidth - sx, clearPad * 2);
+                const sh = Math.min(activeHeight - sy, clearPad * 2);
+                if (sw > 0 && sh > 0) {
+                  ctx.putImageData(activeImg, 0, 0, sx, sy, sw, sh);
+                }
+              };
+
+              clearRegion(prevBall.x - prevHalfSep, prevBall.y);
+              clearRegion(prevBall.x + prevHalfSep, prevBall.y);
+            }
+
+            // If dual dots overlay is enabled (overlay or both), draw new 2D dual dots
+            if (pD.shape === 'dual-dots' && (pD.dualDotMode === 'overlay' || pD.dualDotMode === 'both')) {
+              drawDualDotsOverlay(ctx, currBall.x, currBall.y);
             }
 
             // Save new square position as previous for next tick
-            prevBallPosRef.current = { x: currBall.x, y: currBall.y, radius: currBall.radius, size: currSize };
+            prevBallPosRef.current = { x: currBall.x, y: currBall.y, radius: currBall.radius, size: baseCurrSize };
           }
         }
       }
@@ -871,6 +1014,19 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
               >
                 <Maximize className="w-3.5 h-3.5" />
                 <span>Fullscreen</span>
+              </button>
+
+              {/* Player Debug Panel Toggle (Shortcut: ~ or Shift+D) */}
+              <button
+                onClick={() => setShowDebugPanel((prev) => !prev)}
+                className={`p-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer ${
+                  showDebugPanel
+                    ? 'bg-amber-600 text-white border-amber-400 shadow-md shadow-amber-600/30'
+                    : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border-slate-700'
+                }`}
+                title="Toggle Player 3D Debug Tuner (` or Shift+D)"
+              >
+                <Sliders className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -1217,6 +1373,248 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Hidden Player Debug Tuning Modal Panel */}
+        {showDebugPanel && (
+          <div className="absolute top-4 right-4 z-40 w-80 bg-slate-900/95 border border-slate-700/80 rounded-2xl shadow-2xl backdrop-blur-xl p-4 text-xs select-none animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-amber-400" />
+                <span className="font-bold text-white text-sm">Player 3D Tuner</span>
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 font-mono px-1.5 py-0.5 rounded">
+                  DEBUG
+                </span>
+              </div>
+              <button
+                onClick={() => setShowDebugPanel(false)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+                title="Close Debug Panel (` or Shift+D)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 max-h-[75vh] overflow-y-auto pr-1">
+              {/* Shape Selector */}
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1.5">
+                  Player Representation Shape
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(
+                    [
+                      { id: 'square', label: 'Square Tile', icon: '⏹️' },
+                      { id: 'circle', label: 'Circle Disc', icon: '⏺️' },
+                      { id: 'pyramid', label: 'Pyramid', icon: '🔺' },
+                      { id: 'dual-dots', label: 'Dual Dots 3D', icon: '👀' },
+                    ] as const
+                  ).map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => setPlayerDebug((prev) => ({ ...prev, shape: s.id }))}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold transition cursor-pointer ${
+                        playerDebug.shape === s.id
+                          ? 'bg-amber-600 text-white border-amber-400 shadow-sm'
+                          : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-700'
+                      }`}
+                    >
+                      <span>{s.icon}</span>
+                      <span>{s.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Dual Dot Specific Settings */}
+              {playerDebug.shape === 'dual-dots' && (
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2.5">
+                  <div className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                    <span>✨</span>
+                    <span>Dual Dot Guide Fusion Mode</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    Two dots separated by exact stereo disparity. When eyes fuse them, the middle dot is the exact 3D player position.
+                  </p>
+
+                  {/* Render Mode */}
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-300 block mb-1">
+                      Dot Render Pipeline
+                    </label>
+                    <div className="grid grid-cols-3 gap-1">
+                      {(
+                        [
+                          { id: 'overlay', label: 'Overlay' },
+                          { id: 'depth', label: '3D Depth' },
+                          { id: 'both', label: 'Both' },
+                        ] as const
+                      ).map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => setPlayerDebug((prev) => ({ ...prev, dualDotMode: m.id }))}
+                          className={`py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                            playerDebug.dualDotMode === m.id
+                              ? 'bg-amber-500 text-slate-950'
+                              : 'bg-slate-800 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Dot Color */}
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-300 block mb-1">
+                      Dot Color (Overlay)
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      {['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#38bdf8', '#ffffff'].map((c) => (
+                        <button
+                          key={c}
+                          onClick={() => setPlayerDebug((prev) => ({ ...prev, dualDotColor: c }))}
+                          className={`w-6 h-6 rounded-full border-2 transition cursor-pointer ${
+                            playerDebug.dualDotColor === c ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-70 hover:opacity-100'
+                          }`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Dot Radius */}
+                  <div>
+                    <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                      <span>Dot Radius</span>
+                      <span className="font-mono text-amber-300">{playerDebug.dualDotRadius}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={2}
+                      max={12}
+                      step={1}
+                      value={playerDebug.dualDotRadius}
+                      onChange={(e) =>
+                        setPlayerDebug((prev) => ({ ...prev, dualDotRadius: parseInt(e.target.value) }))
+                      }
+                      className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Size Multiplier */}
+              <div>
+                <div className="flex justify-between text-[11px] text-slate-300 mb-1">
+                  <span>Size Multiplier</span>
+                  <span className="font-mono text-amber-400 font-bold">
+                    {playerDebug.sizeMultiplier.toFixed(2)}x
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={2.5}
+                  step={0.05}
+                  value={playerDebug.sizeMultiplier}
+                  onChange={(e) =>
+                    setPlayerDebug((prev) => ({ ...prev, sizeMultiplier: parseFloat(e.target.value) }))
+                  }
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                />
+              </div>
+
+              {/* Elevation Depth (z) */}
+              <div>
+                <div className="flex justify-between text-[11px] text-slate-300 mb-1">
+                  <span>Player 3D Elevation (Top Z)</span>
+                  <span className="font-mono text-amber-400 font-bold">
+                    {playerDebug.depth.toFixed(2)}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0.60}
+                  max={1.00}
+                  step={0.02}
+                  value={playerDebug.depth}
+                  onChange={(e) =>
+                    setPlayerDebug((prev) => ({ ...prev, depth: parseFloat(e.target.value) }))
+                  }
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                />
+              </div>
+
+              {/* Bevel Base Z */}
+              <div>
+                <div className="flex justify-between text-[11px] text-slate-300 mb-1">
+                  <span>Bevel Base Height (Bottom Z)</span>
+                  <span className="font-mono text-amber-400 font-bold">
+                    {playerDebug.baseZ.toFixed(2)}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0.20}
+                  max={0.80}
+                  step={0.05}
+                  value={playerDebug.baseZ}
+                  onChange={(e) =>
+                    setPlayerDebug((prev) => ({ ...prev, baseZ: parseFloat(e.target.value) }))
+                  }
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                />
+              </div>
+
+              {/* Bevel Ratio */}
+              {playerDebug.shape !== 'dual-dots' && (
+                <div>
+                  <div className="flex justify-between text-[11px] text-slate-300 mb-1">
+                    <span>Bevel / Chamfer Tapering Ratio</span>
+                    <span className="font-mono text-amber-400 font-bold">
+                      {Math.round(playerDebug.bevelRatio * 100)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.0}
+                    max={0.70}
+                    step={0.05}
+                    value={playerDebug.bevelRatio}
+                    onChange={(e) =>
+                      setPlayerDebug((prev) => ({ ...prev, bevelRatio: parseFloat(e.target.value) }))
+                    }
+                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                  />
+                </div>
+              )}
+
+              {/* Reset to Defaults */}
+              <div className="pt-2 border-t border-slate-800 flex justify-between items-center">
+                <span className="text-[10px] text-slate-500">Shortcut: ` or Shift+D</span>
+                <button
+                  onClick={() =>
+                    setPlayerDebug({
+                      shape: 'square',
+                      sizeMultiplier: 1.0,
+                      depth: 0.98,
+                      baseZ: 0.50,
+                      bevelRatio: 0.35,
+                      dualDotMode: 'overlay',
+                      dualDotColor: '#6366f1',
+                      dualDotRadius: 5,
+                    })
+                  }
+                  className="text-[10px] text-amber-400 hover:text-amber-300 font-semibold underline cursor-pointer"
+                >
+                  Reset Defaults
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

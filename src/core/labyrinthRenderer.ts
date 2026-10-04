@@ -420,6 +420,190 @@ export function isPointOnRidge(
   return false;
 }
 
+export type PlayerShapeType = 'square' | 'circle' | 'pyramid' | 'dual-dots';
+
+export interface PlayerShapeOptions {
+  shape?: PlayerShapeType;
+  beveled?: boolean;
+  bevelRatio?: number;
+  baseZ?: number;
+  depth?: number;
+  patternPeriod?: number;
+  disparityRange?: number;
+  viewingMode?: 'parallel' | 'cross-eyed';
+}
+
+/**
+ * Calculates separation distance between dual dots corresponding to depth z.
+ */
+export function calculatePlayerDotSeparation(
+  patternPeriod: number,
+  depthZ: number,
+  disparityFraction: number = 0.20,
+  viewingMode: 'parallel' | 'cross-eyed' = 'parallel'
+): number {
+  const maxDisparity = Math.round(patternPeriod * disparityFraction);
+  const shift = Math.round(depthZ * maxDisparity);
+  return viewingMode === 'cross-eyed' ? patternPeriod + shift : patternPeriod - shift;
+}
+
+/**
+ * Renders a 3D player shape (square, circle, pyramid, or dual-dots) into the depth buffer.
+ */
+export function renderPlayerShapeDepth(
+  depthBuffer: Float32Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  size: number,
+  playerZ: number = 0.98,
+  options?: PlayerShapeOptions
+): void {
+  const shape = options?.shape ?? 'square';
+  const halfSize = Math.floor(size / 2);
+  const baseZ = options?.baseZ ?? 0.50;
+
+  if (shape === 'dual-dots') {
+    // Dual dots in depth map: Two small raised circular dots separated by stereo disparity
+    const period = options?.patternPeriod ?? 120;
+    const dispFraction = options?.disparityRange ?? 0.20;
+    const vMode = options?.viewingMode ?? 'parallel';
+    const sep = calculatePlayerDotSeparation(period, playerZ, dispFraction, vMode);
+    const halfSep = Math.round(sep / 2);
+    const dotRadius = Math.max(3, Math.round(size * 0.28));
+
+    const drawDot = (dotCenterX: number, dotCenterY: number) => {
+      const minX = Math.max(0, Math.floor(dotCenterX - dotRadius));
+      const maxX = Math.min(width - 1, Math.ceil(dotCenterX + dotRadius));
+      const minY = Math.max(0, Math.floor(dotCenterY - dotRadius));
+      const maxY = Math.min(height - 1, Math.ceil(dotCenterY + dotRadius));
+      const r2 = dotRadius * dotRadius;
+
+      for (let py = minY; py <= maxY; py++) {
+        const rowOffset = py * width;
+        const dy = py - dotCenterY;
+        for (let px = minX; px <= maxX; px++) {
+          const dx = px - dotCenterX;
+          const d2 = dx * dx + dy * dy;
+          if (d2 <= r2) {
+            const frac = Math.sqrt(d2) / dotRadius;
+            const smoothFrac = 1.0 - frac * frac;
+            const z = baseZ + (playerZ - baseZ) * smoothFrac;
+            const idx = rowOffset + px;
+            depthBuffer[idx] = Math.max(depthBuffer[idx], z);
+          }
+        }
+      }
+    };
+
+    drawDot(x - halfSep, y);
+    drawDot(x + halfSep, y);
+    return;
+  }
+
+  if (shape === 'circle') {
+    // Elevated disc with optional beveled rim
+    const minX = Math.max(0, Math.floor(x - halfSize));
+    const maxX = Math.min(width - 1, Math.ceil(x + halfSize));
+    const minY = Math.max(0, Math.floor(y - halfSize));
+    const maxY = Math.min(height - 1, Math.ceil(y + halfSize));
+    const r2 = halfSize * halfSize;
+    const bevelRatio = options?.bevelRatio ?? 0.35;
+    const bevelR = halfSize * (1.0 - bevelRatio);
+
+    for (let py = minY; py <= maxY; py++) {
+      const rowOffset = py * width;
+      const dy = py - y;
+      for (let px = minX; px <= maxX; px++) {
+        const dx = px - x;
+        const d2 = dx * dx + dy * dy;
+        if (d2 <= r2) {
+          const dist = Math.sqrt(d2);
+          let zVal = playerZ;
+          if (options?.beveled && dist > bevelR) {
+            const t = Math.max(0, Math.min(1, (halfSize - dist) / (halfSize - bevelR)));
+            const smoothT = t * t * (3 - 2 * t);
+            zVal = baseZ + (playerZ - baseZ) * smoothT;
+          }
+          const idx = rowOffset + px;
+          depthBuffer[idx] = Math.max(depthBuffer[idx], zVal);
+        }
+      }
+    }
+    return;
+  }
+
+  if (shape === 'pyramid') {
+    // 4-sided pyramid / cone slope tapering linearly from apex to base
+    const minX = Math.max(0, Math.round(x - halfSize));
+    const maxX = Math.min(width - 1, Math.round(x + halfSize));
+    const minY = Math.max(0, Math.round(y - halfSize));
+    const maxY = Math.min(height - 1, Math.round(y + halfSize));
+
+    for (let py = minY; py <= maxY; py++) {
+      const rowOffset = py * width;
+      const dy = Math.min(py - (y - halfSize), (y + halfSize) - py);
+      for (let px = minX; px <= maxX; px++) {
+        const dx = Math.min(px - (x - halfSize), (x + halfSize) - px);
+        const distFromEdge = Math.min(dx, dy);
+        const t = Math.max(0, Math.min(1, distFromEdge / Math.max(1, halfSize)));
+        const zVal = baseZ + (playerZ - baseZ) * t;
+        const idx = rowOffset + px;
+        depthBuffer[idx] = Math.max(depthBuffer[idx], zVal);
+      }
+    }
+    return;
+  }
+
+  // Default: 'square' (beveled plateau)
+  renderFloatingSquareDepth(depthBuffer, width, height, x, y, size, playerZ, options);
+}
+
+/**
+ * Erases a previously rendered player shape by restoring clean base maze depth.
+ */
+export function erasePlayerShapeDepth(
+  depthBuffer: Float32Array,
+  cleanMazeDepth: Float32Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  size: number,
+  options?: PlayerShapeOptions
+): void {
+  const shape = options?.shape ?? 'square';
+  if (shape === 'dual-dots') {
+    const period = options?.patternPeriod ?? 120;
+    const dispFraction = options?.disparityRange ?? 0.20;
+    const vMode = options?.viewingMode ?? 'parallel';
+    const playerZ = options?.depth ?? 0.98;
+    const sep = calculatePlayerDotSeparation(period, playerZ, dispFraction, vMode);
+    const halfSep = Math.round(sep / 2);
+    const dotRadius = Math.max(3, Math.round(size * 0.28)) + 1;
+
+    const eraseDot = (dotCenterX: number, dotCenterY: number) => {
+      const minX = Math.max(0, Math.floor(dotCenterX - dotRadius));
+      const maxX = Math.min(width - 1, Math.ceil(dotCenterX + dotRadius));
+      const minY = Math.max(0, Math.floor(dotCenterY - dotRadius));
+      const maxY = Math.min(height - 1, Math.ceil(dotCenterY + dotRadius));
+      for (let py = minY; py <= maxY; py++) {
+        const rowOffset = py * width;
+        for (let px = minX; px <= maxX; px++) {
+          depthBuffer[rowOffset + px] = cleanMazeDepth[rowOffset + px];
+        }
+      }
+    };
+
+    eraseDot(x - halfSep, y);
+    eraseDot(x + halfSep, y);
+    return;
+  }
+
+  eraseFloatingSquareDepth(depthBuffer, cleanMazeDepth, width, height, x, y, size);
+}
+
 /**
  * Renders a 3D beveled floating player square tile into the depth buffer.
  * Features an elevated top plateau (squareZ ~ 0.96) and smooth chamfered/beveled
