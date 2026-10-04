@@ -70,13 +70,13 @@ const INITIAL_SHAPES: ShapeObject[] = [
     type: 'text',
     x: 400,
     y: 110,
-    width: 480,
-    height: 120,
+    width: 280,
+    height: 140,
     rotation: 0,
     depth: 0.95,
     profile: 'flat',
-    text: '3D MAGIC',
-    fontFamily: 'sans',
+    text: '3D',
+    fontFamily: 'impact',
     fontBold: false,
   },
 ];
@@ -456,8 +456,8 @@ export const App: React.FC = () => {
     const id = `shape-${type}-${Date.now()}`;
     const baseSize = Math.max(20, Math.round(120 * scale));
     const isText = type === 'text';
-    const width = isText ? Math.max(80, Math.round(360 * scale)) : baseSize;
-    const height = isText ? Math.max(40, Math.round(120 * scale)) : baseSize;
+    const width = isText ? Math.max(80, Math.round(260 * scale)) : baseSize;
+    const height = isText ? Math.max(40, Math.round(140 * scale)) : baseSize;
     const newShape: ShapeObject = {
       id,
       type,
@@ -471,7 +471,7 @@ export const App: React.FC = () => {
       starPoints: 5,
       innerRadiusRatio: 0.45,
       text: isText ? '3D' : undefined,
-      fontFamily: isText ? 'sans' : undefined,
+      fontFamily: isText ? 'impact' : undefined,
       fontBold: false,
     };
     setShapes((prev) => [...prev, newShape]);
@@ -594,13 +594,13 @@ export const App: React.FC = () => {
             type: 'text',
             x: 400,
             y: 100,
-            width: 440,
-            height: 110,
+            width: 240,
+            height: 120,
             rotation: 0,
             depth: 0.9,
             profile: 'flat',
-            text: 'STARS',
-            fontFamily: 'sans',
+            text: '3D',
+            fontFamily: 'impact',
             fontBold: false,
           },
         ];
@@ -740,13 +740,13 @@ export const App: React.FC = () => {
             type: 'text',
             x: 400,
             y: 300,
-            width: 360,
-            height: 90,
+            width: 200,
+            height: 120,
             rotation: 0,
             depth: 1.0,
             profile: 'flat',
-            text: 'TARGET',
-            fontFamily: 'sans',
+            text: '3D',
+            fontFamily: 'impact',
             fontBold: false,
           },
         ];
@@ -759,28 +759,14 @@ export const App: React.FC = () => {
             id: 'typo-1',
             type: 'text',
             x: 400,
-            y: 200,
-            width: 580,
-            height: 150,
+            y: 300,
+            width: 480,
+            height: 240,
             rotation: 0,
             depth: 0.95,
             profile: 'flat',
-            text: 'STEREO',
-            fontFamily: 'sans',
-            fontBold: false,
-          },
-          {
-            id: 'typo-2',
-            type: 'text',
-            x: 400,
-            y: 380,
-            width: 520,
-            height: 150,
-            rotation: 0,
-            depth: 0.70,
-            profile: 'flat',
-            text: 'CRAFT',
-            fontFamily: 'sans',
+            text: '3D',
+            fontFamily: 'impact',
             fontBold: false,
           },
         ];
