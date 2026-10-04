@@ -9,12 +9,12 @@ import {
   stepBallPhysics,
   renderFloatingSquareDepth,
   eraseFloatingSquareDepth,
+  renderLabyrinthStereoRows,
+  generateLabyrinthStereogram,
   BallState,
   LabyrinthBounds,
 } from '../core/labyrinthRenderer.ts';
 import {
-  generateStereogram,
-  renderStereogramRows,
   createImageDataHelper,
   getAutotuneOptics,
   getDefaultGrainForPattern,
@@ -460,8 +460,8 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     const squareSize = initialBall.size || bounds.gap;
     renderFloatingSquareDepth(depth, activeWidth, activeHeight, initialBall.x, initialBall.y, squareSize, 0.98);
 
-    // 5. Generate active stereogram with true Thimbleby engine
-    const activeStereogram = generateStereogram(depth, activeWidth, activeHeight, {
+    // 5. Generate active stereogram with continuous texture-coordinate engine
+    const activeStereogram = generateLabyrinthStereogram(depth, activeWidth, activeHeight, {
       ...activeConfig,
       viewingMode: 'parallel',
       showGuideDots: activeConfig.showGuideDots,
@@ -603,7 +603,7 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
             renderTextDepth(depth, activeWidth, activeHeight, textStr, textX, textY, textScale, 0.96);
 
             // Re-render only text rows in stereogram
-            renderStereogramRows(
+            renderLabyrinthStereoRows(
               depth,
               activeWidth,
               activeHeight,
@@ -640,8 +640,8 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
             const minY = Math.max(0, Math.floor(Math.min(prevBall.y - prevHalf, currBall.y - currHalf)) - 1);
             const maxY = Math.min(activeHeight - 1, Math.ceil(Math.max(prevBall.y + prevHalf, currBall.y + currHalf)) + 1);
 
-            // Step 4: Re-render only dirty scanlines through true Thimbleby engine
-            renderStereogramRows(
+            // Step 4: Re-render only dirty scanlines through continuous texture-coordinate engine
+            renderLabyrinthStereoRows(
               depth,
               activeWidth,
               activeHeight,

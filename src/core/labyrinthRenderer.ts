@@ -1,8 +1,8 @@
 import { MazeGrid } from './mazeGenerator.ts';
 import { renderTextDepth, measureTextWidth } from './textDepthRenderer.ts';
 import { smoothDepthMap } from './depthRenderer.ts';
-import { samplePatternColor } from './stereogramEngine.ts';
-import { PatternType } from '../types/index.ts';
+import { samplePatternColor, drawGuideDots, createImageDataHelper } from './stereogramEngine.ts';
+import { PatternType, StereogramConfig } from '../types/index.ts';
 
 export interface LabyrinthBounds {
   x: number;
@@ -898,6 +898,124 @@ export function renderBallStereoOverlay(
   }
 
   return { minX, maxX, minY, maxY };
+}
+
+/**
+ * High-performance continuous sub-pixel texture-coordinate stereogram engine specifically for Labyrinth mode.
+ *
+ * Eliminates the motion disparity collapse and lateral pattern scrambling inherent in discrete Union-Find:
+ * 1. Texture-Coordinate Formulation:
+ *    u(x) = x for x < separation; u(x) = u(x - separation) + S_base for x >= separation.
+ *    Sub-pixel linear interpolation of u(x) prevents 1px quantization jumping as objects move.
+ * 2. Unidirectional Left-to-Right Propagation:
+ *    Pixels to the left of the moving square are 100% untouched bit-for-bit (zero flicker on the left).
+ * 3. Constant Phase to the Right:
+ *    Because u(x) is continuous and deterministic, moving the square preserves the underlying texture
+ *    coherence to the right of the square instead of scrambling roots into random noise.
+ */
+export function renderLabyrinthStereoRows(
+  depthMap: Float32Array,
+  width: number,
+  height: number,
+  config: StereogramConfig,
+  startRow: number,
+  endRow: number,
+  targetData: Uint8ClampedArray
+): void {
+  const S = config.patternPeriod || 100;
+  const maxDisparity = config.maxDisparity || 15;
+  const isCrossEyed = config.viewingMode === 'cross-eyed';
+  const patternType = config.patternType || 'sand';
+  const grainSize = config.grainSize || 2;
+  const customImageData = config.customImageData || null;
+
+  const patternCache = new Uint8Array(S * 3);
+  const uCoords = new Float32Array(width);
+
+  const clampedStart = Math.max(0, startRow);
+  const clampedEnd = Math.min(height - 1, endRow);
+
+  for (let y = clampedStart; y <= clampedEnd; y++) {
+    const rowDepthOffset = y * width;
+
+    // Step 1: Pre-sample one period strip of pattern colors for row y
+    for (let px = 0; px < S; px++) {
+      const [r, g, b] = samplePatternColor(
+        patternType,
+        px,
+        y,
+        S,
+        grainSize,
+        customImageData
+      );
+      const cIdx = px * 3;
+      patternCache[cIdx] = r;
+      patternCache[cIdx + 1] = g;
+      patternCache[cIdx + 2] = b;
+    }
+
+    // Step 2: Compute continuous sub-pixel texture coordinate u(x) from left to right
+    for (let x = 0; x < width; x++) {
+      const z = depthMap[rowDepthOffset + x];
+      const disp = z * maxDisparity;
+      const sep = isCrossEyed ? S + disp : S - disp;
+
+      if (x < sep) {
+        uCoords[x] = x;
+      } else {
+        const srcX = x - sep;
+        if (srcX <= 0) {
+          uCoords[x] = S;
+        } else if (srcX >= width - 1) {
+          uCoords[x] = uCoords[width - 1] + S;
+        } else {
+          const x0 = Math.floor(srcX);
+          const frac = srcX - x0;
+          const uPrev = uCoords[x0] * (1 - frac) + uCoords[x0 + 1] * frac;
+          uCoords[x] = uPrev + S;
+        }
+      }
+    }
+
+    // Step 3: Sample pattern color with sub-pixel linear interpolation
+    let outIdx = rowDepthOffset * 4;
+    for (let x = 0; x < width; x++) {
+      const u = uCoords[x];
+      const uMod = ((u % S) + S) % S;
+      const u0 = Math.floor(uMod);
+      const u1 = (u0 + 1) % S;
+      const frac = uMod - u0;
+
+      const idx0 = u0 * 3;
+      const idx1 = u1 * 3;
+
+      const r = Math.round(patternCache[idx0] * (1 - frac) + patternCache[idx1] * frac);
+      const g = Math.round(patternCache[idx0 + 1] * (1 - frac) + patternCache[idx1 + 1] * frac);
+      const b = Math.round(patternCache[idx0 + 2] * (1 - frac) + patternCache[idx1 + 2] * frac);
+
+      targetData[outIdx] = r;
+      targetData[outIdx + 1] = g;
+      targetData[outIdx + 2] = b;
+      targetData[outIdx + 3] = 255;
+      outIdx += 4;
+    }
+  }
+}
+
+export function generateLabyrinthStereogram(
+  depthMap: Float32Array,
+  width: number,
+  height: number,
+  config: StereogramConfig
+): ImageData {
+  const imgData = createImageDataHelper(width, height);
+  renderLabyrinthStereoRows(depthMap, width, height, config, 0, height - 1, imgData.data);
+
+  if (config.showGuideDots) {
+    drawGuideDots(imgData.data, width, height, config.patternPeriod, config.guideDotColor);
+  }
+
+  return imgData;
 }
 
 

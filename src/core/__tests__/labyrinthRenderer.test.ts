@@ -14,6 +14,8 @@ import {
   renderGoalStarDepth,
   renderInvertedMazeDepth,
   isPointOnRidge,
+  renderLabyrinthStereoRows,
+  generateLabyrinthStereogram,
 } from '../labyrinthRenderer.ts';
 
 describe('labyrinthRenderer', () => {
@@ -347,6 +349,55 @@ describe('labyrinthRenderer', () => {
     // Must respawn at start cell center
     expect(fallenStep.ball.x).toBeCloseTo(startCenterX, 1);
     expect(fallenStep.ball.y).toBeCloseTo(startCenterY, 1);
+  });
+
+  it('renders labyrinth stereogram with continuous texture coordinates and preserves left-side pixels', () => {
+    const depthA = new Float32Array(width * height);
+    const depthB = new Float32Array(width * height);
+
+    // Ball A at x = 200, y = 150
+    renderFloatingSquareDepth(depthA, width, height, 200, 150, 20, 0.98);
+    // Ball B slightly moved to x = 204, y = 150
+    renderFloatingSquareDepth(depthB, width, height, 204, 150, 20, 0.98);
+
+    const config = {
+      patternPeriod: 80,
+      maxDisparity: 14,
+      viewingMode: 'parallel' as const,
+      patternType: 'sand' as const,
+      grainSize: 1,
+      enableOcclusionRemoval: true,
+      smoothingRadius: 1,
+      showGuideDots: false,
+      guideDotColor: '#6366f1',
+      customImageData: null,
+      easeOfView: 'easy' as const,
+    };
+
+    const imgA = generateLabyrinthStereogram(depthA, width, height, config);
+    const imgB = generateLabyrinthStereogram(depthB, width, height, config);
+
+    expect(imgA.width).toBe(width);
+    expect(imgA.height).toBe(height);
+
+    // On row 150, all pixels to the left of the ball (x < 185) MUST BE 100% BIT-FOR-BIT IDENTICAL
+    const rowOffset = 150 * width * 4;
+    for (let x = 0; x < 185; x++) {
+      const idx = rowOffset + x * 4;
+      expect(imgA.data[idx]).toBe(imgB.data[idx]);
+      expect(imgA.data[idx + 1]).toBe(imgB.data[idx + 1]);
+      expect(imgA.data[idx + 2]).toBe(imgB.data[idx + 2]);
+    }
+
+    // Direct renderLabyrinthStereoRows slice test
+    const sliceData = new Uint8ClampedArray(imgA.data);
+    renderLabyrinthStereoRows(depthB, width, height, config, 150, 150, sliceData);
+    for (let x = 0; x < width; x++) {
+      const idx = rowOffset + x * 4;
+      expect(sliceData[idx]).toBe(imgB.data[idx]);
+      expect(sliceData[idx + 1]).toBe(imgB.data[idx + 1]);
+      expect(sliceData[idx + 2]).toBe(imgB.data[idx + 2]);
+    }
   });
 });
 
