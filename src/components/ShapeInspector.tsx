@@ -161,9 +161,9 @@ export const ShapeInspector: React.FC<ShapeInspectorProps> = ({
 
           <div className="flex items-center gap-1.5">
             <button
-              onClick={() => applyTextChange({ fontBold: !(selectedShape.fontBold ?? true) })}
+              onClick={() => applyTextChange({ fontBold: !Boolean(selectedShape.fontBold) })}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition ${
-                (selectedShape.fontBold ?? true)
+                Boolean(selectedShape.fontBold)
                   ? 'bg-indigo-600/25 border-indigo-500/70 text-white'
                   : 'bg-slate-800/70 border-slate-700/60 text-slate-400 hover:text-slate-200'
               }`}
@@ -183,8 +183,7 @@ export const ShapeInspector: React.FC<ShapeInspectorProps> = ({
             <span className="ml-auto text-[10px] text-slate-500">Enter = new line</span>
           </div>
           <p className="text-[10px] leading-snug text-slate-500">
-            Tip: thick fonts with a <strong className="text-slate-400">Beveled</strong> or{' '}
-            <strong className="text-slate-400">Flat</strong> profile and a size of 40px+ read best in 3D.
+            Tip: with a <strong className="text-slate-400">Flat</strong> profile, text creates a clean, sharp 3D plateau that is crisp and easy to read.
           </p>
         </div>
       )}

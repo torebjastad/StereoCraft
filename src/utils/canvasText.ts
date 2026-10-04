@@ -25,7 +25,7 @@ function fontCss(id: TextFontId | undefined): string {
 
 function fontString(shape: ShapeObject): string {
   const style = shape.fontItalic ? 'italic ' : '';
-  const weight = (shape.fontBold ?? true) ? '800 ' : '400 ';
+  const weight = Boolean(shape.fontBold) ? '700 ' : '400 ';
   return `${style}${weight}${REF_FONT_SIZE}px ${fontCss(shape.fontFamily)}`;
 }
 
@@ -48,7 +48,7 @@ export function clearTextLayoutCache(): void {
 /** Tight ink layout of a text shape's content at the reference font size (cached). */
 export function getShapeTextLayout(shape: ShapeObject): TextLayout {
   const text = shape.text ?? '';
-  const key = `${text}|${shape.fontFamily ?? 'sans'}|${shape.fontBold ?? true ? 1 : 0}|${shape.fontItalic ? 1 : 0}`;
+  const key = `${text}|${shape.fontFamily ?? 'sans'}|${Boolean(shape.fontBold) ? 1 : 0}|${shape.fontItalic ? 1 : 0}`;
   const cached = layoutCache.get(key);
   if (cached) return cached;
 

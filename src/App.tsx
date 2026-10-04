@@ -453,12 +453,12 @@ export const App: React.FC = () => {
       height,
       rotation: 0,
       depth: isText ? 0.85 : 0.7,
-      profile: isText ? 'beveled' : 'dome',
+      profile: isText ? 'flat' : 'dome',
       starPoints: 5,
       innerRadiusRatio: 0.45,
       text: isText ? '3D' : undefined,
-      fontFamily: isText ? 'impact' : undefined,
-      fontBold: isText ? true : undefined,
+      fontFamily: isText ? 'sans' : undefined,
+      fontBold: isText ? false : undefined,
     };
     setShapes((prev) => [...prev, newShape]);
     setSelectedShapeId(id);

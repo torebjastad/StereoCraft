@@ -85,6 +85,22 @@ describe('getTextDepthField', () => {
   it('returns null when the rasterizer cannot produce a mask', () => {
     expect(getTextDepthField(makeText(), () => null)).toBeNull();
   });
+
+  it('differentiates non-bold (default) and bold text in the field cache', () => {
+    const spy = vi.fn(blockRasterizer);
+    const regular = makeText({ text: 'STYLE', fontBold: false });
+    const defaultText = makeText({ text: 'STYLE' }); // undefined fontBold should match non-bold
+    const bold = makeText({ text: 'STYLE', fontBold: true });
+
+    const a = getTextDepthField(regular, spy);
+    const b = getTextDepthField(defaultText, spy);
+    expect(a).toBe(b);
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    const c = getTextDepthField(bold, spy);
+    expect(c).not.toBe(a);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('text shape depth evaluation', () => {

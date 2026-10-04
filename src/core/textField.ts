@@ -142,7 +142,7 @@ export function getTextDepthField(
   if (!text.trim()) return null;
 
   const { w, h } = getMaskSize(shape);
-  const key = [text, shape.fontFamily ?? 'sans', shape.fontBold ?? true ? 1 : 0, shape.fontItalic ? 1 : 0, w, h].join('|');
+  const key = [text, shape.fontFamily ?? 'sans', Boolean(shape.fontBold) ? 1 : 0, shape.fontItalic ? 1 : 0, w, h].join('|');
 
   let cache = fieldCaches.get(rasterizer);
   if (!cache) {
