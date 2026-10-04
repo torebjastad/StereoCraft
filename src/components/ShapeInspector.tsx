@@ -215,26 +215,77 @@ export const ShapeInspector: React.FC<ShapeInspectorProps> = ({
         </div>
       </div>
 
-      {/* 3D Surface Profile Selection */}
-      <div className="space-y-2">
-        <label className="text-xs font-semibold text-slate-300">3D Relief Profile</label>
-        <div className="grid grid-cols-2 gap-1.5">
-          {profiles.map((p) => (
+      {/* Image Depthmap Specific Controls */}
+      {selectedShape.type === 'image' && (
+        <div className="space-y-2.5 p-3 rounded-xl bg-slate-900/60 border border-slate-800/80">
+          <label className="text-xs font-semibold text-slate-300">Custom Depthmap Properties</label>
+
+          {selectedShape.imageUrl && (
+            <div className="w-full h-24 rounded-lg overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center relative">
+              <img
+                src={selectedShape.imageUrl}
+                alt="Depthmap preview"
+                className="w-full h-full object-contain"
+              />
+              <span className="absolute bottom-1 right-2 text-[9px] font-mono text-slate-400 bg-slate-900/80 px-1 rounded">
+                {selectedShape.imageWidth ?? 0} × {selectedShape.imageHeight ?? 0}px
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-xs text-slate-300 font-medium">Invert Depth</span>
             <button
-              key={p.id}
-              onClick={() => onUpdateShape({ profile: p.id })}
-              className={`p-2.5 rounded-xl border text-left transition ${
-                selectedShape.profile === p.id
-                  ? 'bg-indigo-600/20 border-indigo-500/60 text-white'
-                  : 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:text-slate-200'
+              onClick={() => onUpdateShape({ invertDepth: !Boolean(selectedShape.invertDepth) })}
+              className={`px-3 py-1 rounded-lg border text-xs font-semibold transition cursor-pointer ${
+                selectedShape.invertDepth
+                  ? 'bg-purple-600/30 border-purple-500 text-purple-200'
+                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
               }`}
             >
-              <div className="text-xs font-bold leading-none mb-1">{p.label}</div>
-              <div className="text-[10px] text-slate-400 leading-tight">{p.desc}</div>
+              {selectedShape.invertDepth ? 'Inverted (Dark = High)' : 'Normal (White = High)'}
             </button>
-          ))}
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-xs text-slate-300 font-medium">Aspect Ratio</span>
+            <button
+              onClick={() => {
+                if (selectedShape.imageWidth && selectedShape.imageHeight) {
+                  const aspect = selectedShape.imageWidth / selectedShape.imageHeight;
+                  onUpdateShape({ height: Math.max(20, Math.round(selectedShape.width / aspect)) });
+                }
+              }}
+              className="px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-300 transition cursor-pointer"
+            >
+              Reset 1:1 Aspect
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* 3D Surface Profile Selection (for non-image shapes) */}
+      {selectedShape.type !== 'image' && (
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-slate-300">3D Relief Profile</label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {profiles.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => onUpdateShape({ profile: p.id })}
+                className={`p-2.5 rounded-xl border text-left transition ${
+                  selectedShape.profile === p.id
+                    ? 'bg-indigo-600/20 border-indigo-500/60 text-white'
+                    : 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <div className="text-xs font-bold leading-none mb-1">{p.label}</div>
+                <div className="text-[10px] text-slate-400 leading-tight">{p.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Transform: Position & Dimensions */}
       <div className="space-y-2.5 p-3 rounded-xl bg-slate-900/60 border border-slate-800/80">

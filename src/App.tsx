@@ -451,13 +451,34 @@ export const App: React.FC = () => {
   const selectedShape = shapes.find((s) => s.id === selectedShapeId) || null;
 
   // Add Shape scaled to canvas resolution
-  const handleAddShape = (type: ShapeType) => {
+  const handleAddShape = (
+    type: ShapeType,
+    initialData?: {
+      imageData: Uint8ClampedArray;
+      imageWidth: number;
+      imageHeight: number;
+      imageUrl: string;
+    }
+  ) => {
     const scale = Math.min(dimensions.width / 800, dimensions.height / 600);
     const id = `shape-${type}-${Date.now()}`;
     const baseSize = Math.max(20, Math.round(120 * scale));
     const isText = type === 'text';
-    const width = isText ? Math.max(80, Math.round(260 * scale)) : baseSize;
-    const height = isText ? Math.max(40, Math.round(140 * scale)) : baseSize;
+    const isImage = type === 'image';
+
+    let width = baseSize;
+    let height = baseSize;
+
+    if (isText) {
+      width = Math.max(80, Math.round(260 * scale));
+      height = Math.max(40, Math.round(140 * scale));
+    } else if (isImage && initialData) {
+      const aspect = initialData.imageWidth / (initialData.imageHeight || 1);
+      const targetW = Math.min(dimensions.width * 0.6, 320 * scale);
+      width = Math.max(40, Math.round(targetW));
+      height = Math.max(40, Math.round(width / aspect));
+    }
+
     const newShape: ShapeObject = {
       id,
       type,
@@ -466,13 +487,18 @@ export const App: React.FC = () => {
       width,
       height,
       rotation: 0,
-      depth: isText ? 0.90 : 0.7,
+      depth: isText || isImage ? 0.90 : 0.7,
       profile: 'flat',
       starPoints: 5,
       innerRadiusRatio: 0.45,
       text: isText ? '3D' : undefined,
       fontFamily: isText ? 'impact' : undefined,
       fontBold: false,
+      imageData: initialData?.imageData,
+      imageWidth: initialData?.imageWidth,
+      imageHeight: initialData?.imageHeight,
+      imageUrl: initialData?.imageUrl,
+      invertDepth: false,
     };
     setShapes((prev) => [...prev, newShape]);
     setSelectedShapeId(id);

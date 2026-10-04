@@ -176,6 +176,54 @@ function getTextDepth(
 }
 
 /**
+ * Calculates depth for a custom image depthmap by sampling its grayscale pixel buffer.
+ * Bilinearly interpolates normalized coordinates nx, ny in [-1, 1].
+ */
+function getImageDepth(
+  nx: number,
+  ny: number,
+  imageData: Uint8ClampedArray | undefined,
+  imgW: number | undefined,
+  imgH: number | undefined,
+  maxDepth: number,
+  invert: boolean = false
+): number {
+  if (Math.abs(nx) > 1.0 || Math.abs(ny) > 1.0 || !imageData || !imgW || !imgH) return 0;
+
+  // Map nx in [-1, 1] to u in [0, imgW - 1]
+  const u = ((nx + 1.0) / 2.0) * (imgW - 1);
+  const v = ((ny + 1.0) / 2.0) * (imgH - 1);
+
+  const x0 = Math.floor(u);
+  const y0 = Math.floor(v);
+  const x1 = Math.min(imgW - 1, x0 + 1);
+  const y1 = Math.min(imgH - 1, y0 + 1);
+
+  const tx = u - x0;
+  const ty = v - y0;
+
+  const idx00 = y0 * imgW + x0;
+  const idx10 = y0 * imgW + x1;
+  const idx01 = y1 * imgW + x0;
+  const idx11 = y1 * imgW + x1;
+
+  const v00 = imageData[idx00] / 255.0;
+  const v10 = imageData[idx10] / 255.0;
+  const v01 = imageData[idx01] / 255.0;
+  const v11 = imageData[idx11] / 255.0;
+
+  const top = v00 * (1 - tx) + v10 * tx;
+  const bot = v01 * (1 - tx) + v11 * tx;
+  let val = top * (1 - ty) + bot * ty;
+
+  if (invert) {
+    val = 1.0 - val;
+  }
+
+  return maxDepth * val;
+}
+
+/**
  * Builds a per-pixel depth evaluator for a shape. All trigonometry and divisions are
  * hoisted out of the returned closure, which matters because it runs once per pixel.
  */
@@ -210,6 +258,19 @@ export function createShapeEvaluator(
       if (!textField) return () => 0;
       const sample = { coverage: 0, edge: 0 };
       shapeFn = (nx, ny) => getTextDepth(textField, nx, ny, profile, depth, sample);
+      break;
+    }
+    case 'image': {
+      shapeFn = (nx, ny) =>
+        getImageDepth(
+          nx,
+          ny,
+          shape.imageData,
+          shape.imageWidth,
+          shape.imageHeight,
+          depth,
+          Boolean(shape.invertDepth)
+        );
       break;
     }
     default:

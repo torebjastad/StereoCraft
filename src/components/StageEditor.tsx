@@ -42,6 +42,8 @@ const COMMIT_INTERVAL_MS = 90;
 const MIN_SHAPE_SIZE = 12;
 const ROTATE_STEM = 26;
 
+const imageElementCache = new Map<string, HTMLImageElement>();
+
 /**
  * Transforms canvas coordinates (x, y) to shape-local coordinates (u, v)
  */
@@ -316,6 +318,29 @@ export const StageEditor: React.FC<StageEditorProps> = ({
           ctx.setLineDash([4 * ui, 4 * ui]);
           ctx.strokeRect(-halfW, -halfH, shape.width, shape.height);
         }
+      } else if (shape.type === 'image') {
+        // Draw the custom depthmap image or a stylized placeholder
+        if (shape.imageUrl) {
+          let imgEl = imageElementCache.get(shape.imageUrl);
+          if (!imgEl) {
+            imgEl = new Image();
+            imgEl.onload = () => requestDraw();
+            imgEl.src = shape.imageUrl;
+            imageElementCache.set(shape.imageUrl, imgEl);
+          }
+          if (imgEl.complete && imgEl.naturalWidth > 0) {
+            ctx.drawImage(imgEl, -halfW, -halfH, shape.width, shape.height);
+          } else {
+            ctx.fillStyle = fillColor;
+            ctx.fillRect(-halfW, -halfH, shape.width, shape.height);
+          }
+        } else {
+          ctx.fillStyle = fillColor;
+          ctx.fillRect(-halfW, -halfH, shape.width, shape.height);
+        }
+        ctx.strokeStyle = isSelected ? '#6366f1' : '#64748b';
+        ctx.lineWidth = (isSelected ? 3 : 1.5) * ui;
+        ctx.strokeRect(-halfW, -halfH, shape.width, shape.height);
       } else {
         ctx.fillStyle = fillColor;
         ctx.strokeStyle = isSelected ? '#6366f1' : '#64748b';

@@ -1,4 +1,4 @@
-export type ShapeType = 'circle' | 'square' | 'triangle' | 'star' | 'text';
+export type ShapeType = 'circle' | 'square' | 'triangle' | 'star' | 'text' | 'image';
 
 export type DepthProfileType = 'flat' | 'dome' | 'pyramid' | 'beveled';
 
@@ -22,6 +22,12 @@ export interface ShapeObject {
   fontFamily?: TextFontId; // for text shapes (default 'sans')
   fontBold?: boolean; // for text shapes (default true)
   fontItalic?: boolean; // for text shapes (default false)
+  // Custom depthmap image properties
+  imageData?: Uint8ClampedArray; // grayscale luminance buffer [width * height] normalized 0..255
+  imageWidth?: number; // intrinsic pixel width of uploaded depthmap
+  imageHeight?: number; // intrinsic pixel height of uploaded depthmap
+  imageUrl?: string; // object URL or data URL for 2D stage rendering
+  invertDepth?: boolean; // invert depth values (black becomes high, white becomes low)
 }
 
 export type PatternType =

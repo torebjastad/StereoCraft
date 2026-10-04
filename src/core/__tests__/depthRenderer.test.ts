@@ -118,4 +118,45 @@ describe('depthRenderer', () => {
     // The edge between 50 and 75 should be smoothed (non-zero)
     expect(smoothed[50 * w + 71]).toBeGreaterThan(0);
   });
+
+  it('evaluates a custom image depthmap accurately with scaling and inversion', () => {
+    // 2x2 grayscale image buffer:
+    // [255, 128]
+    // [  0,  64]
+    const imgData = new Uint8ClampedArray([255, 128, 0, 64]);
+    const imageShape: ShapeObject = {
+      id: 'img1',
+      type: 'image',
+      x: 100,
+      y: 100,
+      width: 50,
+      height: 50,
+      rotation: 0,
+      depth: 1.0,
+      profile: 'flat',
+      imageData: imgData,
+      imageWidth: 2,
+      imageHeight: 2,
+      invertDepth: false,
+    };
+
+    // Center is the average of the 4 pixels: (255+128+0+64)/4 / 255 = 447 / 1020 ~= 0.438
+    const centerDepth = evaluateShapeAtPixel(imageShape, 100, 100);
+    expect(centerDepth).toBeCloseTo((255 + 128 + 0 + 64) / 4 / 255, 2);
+
+    // Top-left pixel corresponds to (x=75, y=75), value is 255 / 255 = 1.0
+    const topLeftDepth = evaluateShapeAtPixel(imageShape, 75, 75);
+    expect(topLeftDepth).toBeCloseTo(1.0, 1);
+
+    // Outside bounds
+    expect(evaluateShapeAtPixel(imageShape, 130, 100)).toBe(0);
+
+    // With invertDepth = true
+    const invertedShape: ShapeObject = {
+      ...imageShape,
+      invertDepth: true,
+    };
+    const invertedTopLeft = evaluateShapeAtPixel(invertedShape, 75, 75);
+    expect(invertedTopLeft).toBeCloseTo(0.0, 1);
+  });
 });
