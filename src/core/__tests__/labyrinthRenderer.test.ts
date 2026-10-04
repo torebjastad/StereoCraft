@@ -58,13 +58,13 @@ describe('labyrinthRenderer', () => {
     expect(depth[centerIdx]).toBeGreaterThan(0.05);
     expect(depth[centerIdx]).toBeLessThan(0.4);
 
-    // Goal center must have elevated Big 3D Star depth (> 0.90)
-    const goalCenterX = Math.round(bounds.x + maze.goalX * bounds.cellW + bounds.cellW / 2);
-    const goalCenterY = Math.round(bounds.y + maze.goalY * bounds.cellH + bounds.cellH / 2);
-    const goalIdx = goalCenterY * width + goalCenterX;
-    expect(depth[goalIdx]).toBeGreaterThan(0.90);
+    // Outer wall exit doorway has open floor depth (< 0.4)
+    const exitX = Math.round(bounds.x + bounds.width);
+    const exitY = Math.round(bounds.y + maze.goalY * bounds.cellH + bounds.cellH / 2);
+    const exitIdx = exitY * width + exitX;
+    expect(depth[exitIdx]).toBeLessThan(0.4);
 
-    // Wall perimeter should have elevated depth (> 0.6)
+    // Wall perimeter (away from exit) should have elevated depth (> 0.5)
     const wallIdx = bounds.y * width + (bounds.x + bounds.cellW);
     expect(depth[wallIdx]).toBeGreaterThan(0.5);
   });
@@ -305,11 +305,16 @@ describe('labyrinthRenderer', () => {
     const startIdx = startCenterY * width + startCenterX;
     expect(invDepth[startIdx]).toBeGreaterThan(0.75);
 
-    // Goal center must be elevated Big 3D Star (~0.94)
+    // Goal cell ridge must be elevated (~0.82)
     const goalCenterX = Math.round(bounds.x + maze.goalX * bounds.cellW + bounds.cellW / 2);
     const goalCenterY = Math.round(bounds.y + maze.goalY * bounds.cellH + bounds.cellH / 2);
     const goalIdx = goalCenterY * width + goalCenterX;
-    expect(invDepth[goalIdx]).toBeGreaterThan(0.90);
+    expect(invDepth[goalIdx]).toBeGreaterThan(0.75);
+
+    // Landing platform outside the maze must be elevated (> 0.80)
+    const platformX = Math.min(width - 8, Math.round(bounds.x + bounds.width + bounds.cellW * 0.9));
+    const platformIdx = goalCenterY * width + platformX;
+    expect(invDepth[platformIdx]).toBeGreaterThan(0.80);
   });
 
   it('checks isPointOnRidge accurately and detects falling off into the abyss', () => {
@@ -398,6 +403,36 @@ describe('labyrinthRenderer', () => {
       expect(sliceData[idx + 1]).toBe(imgB.data[idx + 1]);
       expect(sliceData[idx + 2]).toBe(imgB.data[idx + 2]);
     }
+  });
+
+  it('triggers goal victory when passing through classic outer wall exit', () => {
+    const exitY = bounds.y + maze.goalY * bounds.cellH + bounds.cellH / 2;
+    const nearExitBall = {
+      x: bounds.x + bounds.width - 2,
+      y: exitY,
+      vx: 10,
+      vy: 0,
+      radius: 6,
+    };
+
+    const step = stepBallPhysics(nearExitBall, maze, bounds, { x: 1, y: 0 }, 0.05);
+    expect(step.hasReachedGoal).toBe(true);
+    expect(step.ball.x).toBeGreaterThanOrEqual(bounds.x + bounds.width - 2);
+  });
+
+  it('triggers goal victory when reaching inverted landing platform', () => {
+    const goalY = bounds.y + maze.goalY * bounds.cellH + bounds.cellH / 2;
+    const onBridgeBall = {
+      x: bounds.x + bounds.width + 10,
+      y: goalY,
+      vx: 10,
+      vy: 0,
+      radius: 6,
+    };
+
+    const step = stepBallPhysics(onBridgeBall, maze, bounds, { x: 1, y: 0 }, 0.05, { isInverted: true });
+    expect(step.hasReachedGoal).toBe(true);
+    expect(step.hasFallen).toBe(false);
   });
 });
 

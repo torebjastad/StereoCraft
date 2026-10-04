@@ -93,38 +93,6 @@ const formatTime = (seconds: number) => {
   return `${padMins}:${padSecs}`;
 };
 
-function draw2DStar(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  outerRadius: number,
-  points: number = 5,
-  innerRatio: number = 0.42,
-  strokeStyle: string = '#fbbf24',
-  fillStyle: string = 'rgba(251, 191, 36, 0.45)'
-) {
-  const step = Math.PI / points;
-  ctx.save();
-  ctx.beginPath();
-  for (let i = 0; i < points * 2; i++) {
-    const r = i % 2 === 0 ? outerRadius : outerRadius * innerRatio;
-    const angle = i * step - Math.PI / 2;
-    const x = cx + r * Math.cos(angle);
-    const y = cy + r * Math.sin(angle);
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-  ctx.fillStyle = fillStyle;
-  ctx.fill();
-  ctx.lineWidth = 2.5;
-  ctx.strokeStyle = strokeStyle;
-  ctx.shadowColor = '#f59e0b';
-  ctx.shadowBlur = 12;
-  ctx.stroke();
-  ctx.restore();
-}
-
 export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
   config,
   canvasWidth = 800,
@@ -391,12 +359,59 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     }
     ctx.putImageData(blended, 0, 0);
 
-    // Draw glowing gold star marker over the goal in radar peek mode
-    const goalCenterX = bounds.x + maze.goalX * bounds.cellW + bounds.cellW / 2;
-    const goalCenterY = bounds.y + maze.goalY * bounds.cellH + bounds.cellH / 2;
+    // Draw exit goal marker in radar peek mode
+    ctx.save();
     const cellDim = Math.min(bounds.cellW, bounds.cellH);
-    const starRadius = Math.max(16, Math.floor(cellDim * 0.65));
-    draw2DStar(ctx, goalCenterX, goalCenterY, starRadius, 5, 0.42, '#fbbf24', 'rgba(251, 191, 36, 0.45)');
+    const goalCenterY = bounds.y + maze.goalY * bounds.cellH + bounds.cellH / 2;
+
+    if (labyrinthMode === 'inverted') {
+      // Inverted mode: Landing platform marker outside the maze
+      const bridgeLen = Math.max(16, Math.floor(bounds.cellW * 0.85));
+      const platformDim = Math.max(20, Math.floor(cellDim * 1.15));
+      const platformCenterX = Math.min(activeWidth - platformDim / 2 - 4, bounds.x + bounds.width + bridgeLen + platformDim / 2);
+
+      // Glowing Landing Platform Pad
+      ctx.shadowColor = '#10b981';
+      ctx.shadowBlur = 14;
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.45)';
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 2.5;
+      ctx.fillRect(platformCenterX - platformDim / 2, goalCenterY - platformDim / 2, platformDim, platformDim);
+      ctx.strokeRect(platformCenterX - platformDim / 2, goalCenterY - platformDim / 2, platformDim, platformDim);
+
+      // Target ring
+      ctx.beginPath();
+      ctx.arc(platformCenterX, goalCenterY, platformDim * 0.3, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ecfdf5';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    } else {
+      // Classic mode: Outer wall exit gateway opening
+      const exitX = bounds.x + bounds.width;
+      const exitDoorH = bounds.cellH * 0.85;
+
+      ctx.shadowColor = '#fbbf24';
+      ctx.shadowBlur = 14;
+      ctx.fillStyle = 'rgba(251, 191, 36, 0.5)';
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 3;
+
+      // Illuminated gateway arch
+      ctx.strokeRect(exitX - 4, goalCenterY - exitDoorH / 2, 16, exitDoorH);
+      ctx.fillRect(exitX - 4, goalCenterY - exitDoorH / 2, 16, exitDoorH);
+
+      // Arrow pointing out of the maze
+      ctx.beginPath();
+      ctx.moveTo(exitX - 2, goalCenterY);
+      ctx.lineTo(exitX + 18, goalCenterY);
+      ctx.lineTo(exitX + 10, goalCenterY - 6);
+      ctx.moveTo(exitX + 18, goalCenterY);
+      ctx.lineTo(exitX + 10, goalCenterY + 6);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
+    ctx.restore();
   };
 
   const renderPeekingRows = (

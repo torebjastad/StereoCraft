@@ -137,7 +137,25 @@ export function renderBaseMazeDepth(
   drawWall(ox - halfWall, oy - halfWall, bounds.width + wallThickness, wallThickness); // Top
   drawWall(ox - halfWall, oy + bounds.height - halfWall, bounds.width + wallThickness, wallThickness); // Bottom
   drawWall(ox - halfWall, oy - halfWall, wallThickness, bounds.height + wallThickness); // Left
-  drawWall(ox + bounds.width - halfWall, oy - halfWall, wallThickness, bounds.height + wallThickness); // Right
+
+  // Right wall has an exit doorway / hole opening at the goal cell (goalY)
+  const exitTopY = oy + maze.goalY * cellH;
+  const exitBottomY = oy + (maze.goalY + 1) * cellH;
+  if (exitTopY > oy) {
+    drawWall(ox + bounds.width - halfWall, oy - halfWall, wallThickness, (exitTopY - oy) + halfWall);
+  }
+  if (exitBottomY < oy + bounds.height) {
+    drawWall(ox + bounds.width - halfWall, exitBottomY, wallThickness, (oy + bounds.height - exitBottomY) + halfWall);
+  }
+
+  // Extend corridor floor smoothly outward through and past the exit hole
+  const exitExtension = Math.min(canvasWidth - (ox + bounds.width) - 2, Math.round(cellW * 0.9));
+  for (let py = exitTopY; py < exitBottomY; py++) {
+    const rowOffset = py * canvasWidth;
+    for (let px = ox + bounds.width - halfWall; px <= ox + bounds.width + exitExtension; px++) {
+      depthBuffer[rowOffset + px] = floorZ;
+    }
+  }
 
   // 3. Inner maze walls
   for (let r = 0; r < maze.rows; r++) {
@@ -154,14 +172,6 @@ export function renderBaseMazeDepth(
       }
     }
   }
-
-  // 4. Goal Star: Elevated Big 3D Star plateau rising ABOVE the maze walls (z = 0.94)
-  const goalCenterX = ox + maze.goalX * cellW + cellW / 2;
-  const goalCenterY = oy + maze.goalY * cellH + cellH / 2;
-  const cellDim = Math.min(cellW, cellH);
-  const starRadius = Math.max(22, Math.floor(cellDim * 0.95));
-
-  renderGoalStarDepth(depthBuffer, canvasWidth, canvasHeight, goalCenterX, goalCenterY, starRadius, 0.94, 0.55, 0.42);
 
   // Subtle anti-aliasing to smooth micro-cliff edges without blurring walls
   return smoothDepthMap(depthBuffer, canvasWidth, canvasHeight, 1);
@@ -299,13 +309,30 @@ export function renderInvertedMazeDepth(
     }
   }
 
-  // 3. Goal Star: Elevated Big 3D Star plateau rising at the goal ridge peak (z = 0.94)
+  // 3. Goal Exit Bridge & Wide Landing Platform
   const goalCenterX = ox + maze.goalX * cellW + cellW / 2;
   const goalCenterY = oy + maze.goalY * cellH + cellH / 2;
   const cellDim = Math.min(cellW, cellH);
-  const starRadius = Math.max(22, Math.floor(cellDim * 0.95));
+  const bridgeLen = Math.max(16, Math.floor(cellW * 0.85));
+  const platformDim = Math.max(20, Math.floor(cellDim * 1.15));
+  const platformCenterX = Math.min(canvasWidth - platformDim / 2 - 4, ox + bounds.width + bridgeLen + platformDim / 2);
+  const platformCenterY = goalCenterY;
+  const platformZ = 0.88; // Crisp, solid elevated plateau
 
-  renderGoalStarDepth(depthBuffer, canvasWidth, canvasHeight, goalCenterX, goalCenterY, starRadius, 0.94, 0.55, 0.42);
+  // Draw connecting ridge bridge extending out of the maze to the platform
+  drawRidgeRect(goalCenterX, goalCenterY - halfRidge, platformCenterX - goalCenterX, ridgeWidth);
+
+  // Draw wide flat landing platform
+  const pMinX = Math.max(0, Math.floor(platformCenterX - platformDim / 2));
+  const pMaxX = Math.min(canvasWidth - 1, Math.ceil(platformCenterX + platformDim / 2));
+  const pMinY = Math.max(0, Math.floor(platformCenterY - platformDim / 2));
+  const pMaxY = Math.min(canvasHeight - 1, Math.ceil(platformCenterY + platformDim / 2));
+  for (let py = pMinY; py <= pMaxY; py++) {
+    const rowOffset = py * canvasWidth;
+    for (let px = pMinX; px <= pMaxX; px++) {
+      depthBuffer[rowOffset + px] = Math.max(depthBuffer[rowOffset + px], platformZ);
+    }
+  }
 
   // Subtle anti-aliasing to smooth micro-cliff edges without blurring ridge tops
   return smoothDepthMap(depthBuffer, canvasWidth, canvasHeight, 1);
@@ -325,11 +352,28 @@ export function isPointOnRidge(
   const { x: ox, y: oy, cellW, cellH, gap } = bounds;
   const halfRidge = gap / 2 + margin;
 
-  // Check goal area: if within goal star radius, player is safe
+  // Check goal exit bridge & landing platform
   const goalCenterX = ox + maze.goalX * cellW + cellW / 2;
   const goalCenterY = oy + maze.goalY * cellH + cellH / 2;
   const cellDim = Math.min(cellW, cellH);
-  if (Math.hypot(x - goalCenterX, y - goalCenterY) <= cellDim * 0.70) {
+  const bridgeLen = Math.max(16, Math.floor(cellW * 0.85));
+  const platformDim = Math.max(20, Math.floor(cellDim * 1.15));
+  const platformCenterX = Math.min(ox + bounds.width + bridgeLen + platformDim / 2, ox + bounds.width + cellW * 3);
+
+  // On the landing platform?
+  if (
+    Math.abs(x - platformCenterX) <= platformDim / 2 + margin &&
+    Math.abs(y - goalCenterY) <= platformDim / 2 + margin
+  ) {
+    return true;
+  }
+
+  // On the connecting bridge?
+  if (
+    x >= goalCenterX &&
+    x <= platformCenterX &&
+    Math.abs(y - goalCenterY) <= halfRidge
+  ) {
     return true;
   }
 
@@ -581,11 +625,9 @@ export function stepBallPhysics(
       };
     }
 
-    // Check goal condition
-    const goalCenterX = ox + maze.goalX * cellW + cellW / 2;
-    const goalCenterY = oy + maze.goalY * cellH + cellH / 2;
-    const distToGoal = Math.sqrt((newX - goalCenterX) ** 2 + (newY - goalCenterY) ** 2);
-    const hasReachedGoal = distToGoal < (bounds.gap ? bounds.gap * 0.52 : Math.min(cellW, cellH) * 0.38);
+    // Check goal condition: on bridge leading to landing platform or on the platform
+    const bridgeStartX = ox + bounds.width - bounds.gap / 2;
+    const hasReachedGoal = newX >= bridgeStartX + bounds.cellW * 0.4;
 
     return {
       ball: {
@@ -608,8 +650,13 @@ export function stepBallPhysics(
   const minY = oy + halfWall + ball.radius;
   const maxY = oy + bounds.height - halfWall - ball.radius;
 
+  const exitTopY = oy + maze.goalY * cellH;
+  const exitBottomY = oy + (maze.goalY + 1) * cellH;
+  const isAtExitRow = newY >= exitTopY + ball.radius && newY <= exitBottomY - ball.radius;
+
   if (newX < minX) { newX = minX; vx = 0; }
-  if (newX > maxX) { newX = maxX; vx = 0; }
+  // Right boundary allows passing through the exit doorway!
+  if (!isAtExitRow && newX > maxX) { newX = maxX; vx = 0; }
   if (newY < minY) { newY = minY; vy = 0; }
   if (newY > maxY) { newY = maxY; vy = 0; }
 
@@ -624,8 +671,9 @@ export function stepBallPhysics(
     const cellTop = oy + currentCellY * cellH;
     const cellBottom = cellTop + cellH;
 
-    // Check Right Wall
-    if (cell.walls.right && newX + ball.radius > cellRight - halfWall) {
+    // Check Right Wall (except at goal cell which opens out of the maze)
+    const isGoalCell = currentCellX === maze.goalX && currentCellY === maze.goalY;
+    if (cell.walls.right && !isGoalCell && newX + ball.radius > cellRight - halfWall) {
       newX = cellRight - halfWall - ball.radius;
       vx = 0;
     }
@@ -646,11 +694,10 @@ export function stepBallPhysics(
     }
   }
 
-  // Check goal condition
-  const goalCenterX = ox + maze.goalX * cellW + cellW / 2;
-  const goalCenterY = oy + maze.goalY * cellH + cellH / 2;
-  const distToGoal = Math.sqrt((newX - goalCenterX) ** 2 + (newY - goalCenterY) ** 2);
-  const hasReachedGoal = distToGoal < (bounds.gap ? bounds.gap * 0.52 : Math.min(cellW, cellH) * 0.38);
+  // Check goal condition: passing through the outer wall exit opening or reaching the exit doorway
+  const hasReachedGoal =
+    (isAtExitRow && newX >= ox + bounds.width - halfWall - ball.radius * 0.2) ||
+    (newX >= ox + bounds.width - 2 && newY >= exitTopY && newY <= exitBottomY);
 
   return {
     ball: {
