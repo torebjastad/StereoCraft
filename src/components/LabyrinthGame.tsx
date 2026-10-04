@@ -1322,12 +1322,12 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
               <span>
                 {playerDebug.shape === 'dual-dots' ? (
                   <>
-                    Align eyes with the 2 guide dots at top. In 3D you will see <strong>three player dots</strong>: navigate the labyrinth with the <strong>center dot</strong> using <strong>WASD / Arrow Keys</strong>! {isFullscreen ? '(Press F or Esc to exit fullscreen)' : '(Press F for Fullscreen)'}
+                    In 3D you will see <strong>three player dots</strong>: navigate the labyrinth with the <strong>center dot</strong> using <strong>WASD / Arrow Keys</strong>! {isFullscreen ? '(Press F or Esc to exit fullscreen)' : '(Press F for Fullscreen)'}
                   </>
                 ) : labyrinthMode === 'inverted' ? (
-                  <>Align eyes with the 2 guide dots at top, then press <strong>WASD / Arrow Keys</strong> to balance the 3D Cube on the high ridges to the <strong>Big 3D Star</strong>! Don't fall into the abyss! {isFullscreen ? '(Press F or Esc to exit fullscreen)' : '(Press F for Fullscreen)'}</>
+                  <>Press <strong>WASD / Arrow Keys</strong> to balance the 3D player on the high ridges to the <strong>Big 3D Star</strong>! Don't fall into the abyss! {isFullscreen ? '(Press F or Esc to exit fullscreen)' : '(Press F for Fullscreen)'}</>
                 ) : (
-                  <>Align eyes with the 2 guide dots at top, then press <strong>WASD / Arrow Keys</strong> to navigate the 3D Square into the <strong>Big 3D Star (stor stjerne)</strong> at the exit! {isFullscreen ? '(Press F or Esc to exit fullscreen)' : '(Press F for Fullscreen)'}</>
+                  <>Press <strong>WASD / Arrow Keys</strong> to navigate the 3D player into the <strong>Big 3D Star (stor stjerne)</strong> at the exit! {isFullscreen ? '(Press F or Esc to exit fullscreen)' : '(Press F for Fullscreen)'}</>
                 )}
               </span>
             </div>
