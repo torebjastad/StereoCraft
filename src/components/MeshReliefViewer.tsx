@@ -118,18 +118,21 @@ export const MeshReliefViewer: React.FC<MeshReliefViewerProps> = ({
       isDragging = false;
     };
 
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      camera.position.z = Math.max(60, Math.min(450, camera.position.z + e.deltaY * 0.25));
+    };
+
     const dom = renderer.domElement;
     dom.addEventListener('mousedown', onMouseDown);
+    dom.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
 
-    // Animation loop
+    // Animation loop (static view, manual rotation only — no distracting auto-turntable)
     let animId: number;
     const animate = () => {
       animId = requestAnimationFrame(animate);
-      if (!isDragging) {
-        mesh.rotation.z += 0.002; // gentle auto-turntable
-      }
       renderer.render(scene, camera);
     };
     animate();
@@ -148,6 +151,7 @@ export const MeshReliefViewer: React.FC<MeshReliefViewerProps> = ({
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', handleResize);
       dom.removeEventListener('mousedown', onMouseDown);
+      dom.removeEventListener('wheel', onWheel);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
       geometry.dispose();
@@ -163,8 +167,8 @@ export const MeshReliefViewer: React.FC<MeshReliefViewerProps> = ({
     <div className="relative w-full h-full min-h-[400px] flex items-center justify-center overflow-hidden rounded-xl">
       <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
       <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-lg glass-card text-xs text-slate-300 pointer-events-none flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-        Drag with mouse to rotate 3D relief • Scroll to zoom
+        <span className="w-2 h-2 rounded-full bg-indigo-400" />
+        Click & drag to rotate 3D view • Scroll to zoom
       </div>
     </div>
   );
