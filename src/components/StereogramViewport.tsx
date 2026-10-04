@@ -15,7 +15,6 @@ import {
   Eye,
   Layers,
   Box,
-  SplitSquareVertical,
   Activity,
   Sliders,
   Maximize,
@@ -46,7 +45,7 @@ interface StereogramViewportProps {
   onPrint?: () => void;
 }
 
-export type ViewTab = 'stereogram' | 'stage' | 'depth' | 'split' | '3d-mesh';
+export type ViewTab = 'stereogram' | 'stage' | 'depth' | '3d-mesh';
 
 export const StereogramViewport: React.FC<StereogramViewportProps> = ({
   shapes,
@@ -144,7 +143,7 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
   }, [effectiveShapes, canvasWidth, canvasHeight, config.smoothingRadius, textRasterizer]);
 
   // Compute Stereogram ImageData lazily and debounced
-  const isStereogramTab = activeTab === 'stereogram' || activeTab === 'split';
+  const isStereogramTab = activeTab === 'stereogram';
   const isDirtyRef = useRef<boolean>(false);
 
   const [stereogramImageData, setStereogramImageData] = useState<ImageData>(() => {
@@ -178,7 +177,7 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
       return () => clearTimeout(idleTimer);
     }
 
-    // On stereogram/split tab: if returning from stage tab with pending changes, update immediately
+    // On stereogram tab: if returning from stage tab with pending changes, update immediately
     if (isDirtyRef.current) {
       isDirtyRef.current = false;
       const imgData = generateStereogram(depthMap, canvasWidth, canvasHeight, config);
@@ -328,7 +327,6 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
                 { id: 'stereogram', label: 'Stereogram', icon: Eye },
                 { id: 'stage', label: '2D Stage', icon: Layers },
                 { id: 'depth', label: 'Depth', icon: Sliders },
-                { id: 'split', label: 'Split', icon: SplitSquareVertical },
                 { id: '3d-mesh', label: '3D Mesh', icon: Box },
               ] as const
             ).map((tab) => {
@@ -497,17 +495,6 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
               <span>Depth Map</span>
             </button>
 
-            <button
-              onClick={() => setActiveTab('split')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
-                activeTab === 'split'
-                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <SplitSquareVertical className="w-3.5 h-3.5" />
-              <span>Split View</span>
-            </button>
 
             <button
               onClick={() => setActiveTab('3d-mesh')}
@@ -643,33 +630,7 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
           />
         </div>
 
-        {/* 4. Split Screen Side-by-Side View */}
-        {activeTab === 'split' && (
-          <div className="grid grid-cols-2 gap-4 w-full h-full max-h-[85vh]">
-            <div className="relative flex flex-col items-center justify-center p-2 rounded-xl bg-slate-900/50 border border-slate-800 overflow-hidden">
-              <span className="absolute top-3 left-4 text-xs font-bold text-slate-300 z-10">
-                Autostereogram
-              </span>
-              <img
-                src={mainCanvasRef.current?.toDataURL()}
-                alt="Stereogram"
-                className="w-full h-full object-contain rounded-lg shadow-md"
-              />
-            </div>
-            <div className="relative flex flex-col items-center justify-center p-2 rounded-xl bg-slate-900/50 border border-slate-800 overflow-hidden">
-              <span className="absolute top-3 left-4 text-xs font-bold text-slate-300 z-10">
-                Depth Map (3D Relief)
-              </span>
-              <img
-                src={depthCanvasRef.current?.toDataURL()}
-                alt="Depth Map"
-                className="w-full h-full object-contain rounded-lg shadow-md"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 5. 3D Relief Mesh Viewer (WebGL) */}
+        {/* 4. 3D Relief Mesh Viewer (WebGL) */}
         {activeTab === '3d-mesh' && (
           <div className="w-full h-full">
             <MeshReliefViewer

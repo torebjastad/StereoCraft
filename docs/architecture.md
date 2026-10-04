@@ -47,7 +47,7 @@ flowchart TD
 | [`src/components/LabyrinthGame.tsx`](file:///c:/Users/toreb/OneDrive/Code/Stereogram/src/components/LabyrinthGame.tsx) | 3D Labyrinth Game | Complete interactive 3D stereoscopic game with real-time rolling ball physics, floating 3D stopwatch, radar peek, and difficulty modes. |
 | [`src/components/MeshReliefViewer.tsx`](file:///c:/Users/toreb/OneDrive/Code/Stereogram/src/components/MeshReliefViewer.tsx) | 3D Relief Mesh | Three.js WebGL component displacing a $160 \times 120$ grid plane according to depth values with dynamic metallic lighting and orbit controls. |
 | [`src/components/StageEditor.tsx`](file:///c:/Users/toreb/OneDrive/Code/Stereogram/src/components/StageEditor.tsx) | 2D Canvas Stage | Direct-manipulation 2D canvas with drag-to-position, selection highlights, and depth badges. |
-| [`src/components/StereogramViewport.tsx`](file:///c:/Users/toreb/OneDrive/Code/Stereogram/src/components/StereogramViewport.tsx) | Viewport & Tabs | Coordinates Stereogram, 2D Stage, Depth Map, Split View, and 3D Mesh tabs; provides Hold to Peek and Wigglegram controls. |
+| [`src/components/StereogramViewport.tsx`](file:///c:/Users/toreb/OneDrive/Code/Stereogram/src/components/StereogramViewport.tsx) | Viewport & Tabs | Coordinates Stereogram, 2D Stage, Depth Map, and 3D Mesh tabs; provides Hold to Peek and Wigglegram controls. |
 
 ---
 
