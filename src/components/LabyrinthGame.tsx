@@ -137,7 +137,7 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     dualDotMode: 'overlay' | 'depth' | 'both';
     dualDotColor: string;
     dualDotRadius: number;
-    dotOffsetX: number; // Calibration shift in pixels so fused dot aligns over ridge
+    dotOffsetX?: number; // Optional user offset; defaults to -Half period (-S/2) for exact ridge alignment
   }>({
     shape: 'square',
     sizeMultiplier: 1.0,
@@ -145,9 +145,8 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     baseZ: 0.50,
     bevelRatio: 0.35,
     dualDotMode: 'overlay',
-    dualDotColor: '#6366f1',
+    dualDotColor: '#ffffff',
     dualDotRadius: 5,
-    dotOffsetX: 0,
   });
 
   const playerDebugRef = useRef(playerDebug);
@@ -465,8 +464,10 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     const halfSep = Math.round(sep / 2);
     const radius = pD.dualDotRadius;
     const color = pD.dualDotColor;
-    // Calibrated center X taking into account the user calibration offset
-    const cx = px + (pD.dotOffsetX || 0);
+    // Default calibration offset: -Half Period (-S/2) locks the fused 3D dot directly over the ridge
+    const defaultOffset = -Math.round(period / 2);
+    const offset = pD.dotOffsetX !== undefined ? pD.dotOffsetX : defaultOffset;
+    const cx = px + offset;
 
     ctx.save();
     ctx.shadowColor = color;
@@ -497,7 +498,9 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     const pD = playerDebugRef.current;
     const sep = calculatePlayerDotSeparation(period, pD.depth, dispFraction, 'parallel');
     const halfSep = Math.round(sep / 2);
-    const cx = px + (pD.dotOffsetX || 0);
+    const defaultOffset = -Math.round(period / 2);
+    const offset = pD.dotOffsetX !== undefined ? pD.dotOffsetX : defaultOffset;
+    const cx = px + offset;
     // Large padding covering the dot radius (up to 14px), shadow glow (10px) + safety margin
     const clearPad = pD.dualDotRadius + 18;
 
@@ -1314,10 +1317,14 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
 
           {/* Start Prompt Overlay */}
           {gameState === 'idle' && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl glass-panel text-xs text-slate-300 pointer-events-none flex items-center gap-2 shadow-2xl border border-white/10 z-20">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl glass-panel text-xs text-slate-300 pointer-events-none flex items-center gap-2 shadow-2xl border border-white/10 z-20 max-w-xl text-center">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
               <span>
-                {labyrinthMode === 'inverted' ? (
+                {playerDebug.shape === 'dual-dots' ? (
+                  <>
+                    Align eyes with the 2 guide dots at top. In 3D you will see <strong>three player dots</strong>: navigate the labyrinth with the <strong>center dot</strong> using <strong>WASD / Arrow Keys</strong>! {isFullscreen ? '(Press F or Esc to exit fullscreen)' : '(Press F for Fullscreen)'}
+                  </>
+                ) : labyrinthMode === 'inverted' ? (
                   <>Align eyes with the 2 guide dots at top, then press <strong>WASD / Arrow Keys</strong> to balance the 3D Cube on the high ridges to the <strong>Big 3D Star</strong>! Don't fall into the abyss! {isFullscreen ? '(Press F or Esc to exit fullscreen)' : '(Press F for Fullscreen)'}</>
                 ) : (
                   <>Align eyes with the 2 guide dots at top, then press <strong>WASD / Arrow Keys</strong> to navigate the 3D Square into the <strong>Big 3D Star (stor stjerne)</strong> at the exit! {isFullscreen ? '(Press F or Esc to exit fullscreen)' : '(Press F for Fullscreen)'}</>
@@ -1521,55 +1528,65 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
 
                   {/* Horizontal Calibration Offset */}
                   <div>
-                    <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-                      <span>Center Parallax Offset (X Shift)</span>
-                      <span className="font-mono text-amber-300">
-                        {playerDebug.dotOffsetX > 0 ? `+${playerDebug.dotOffsetX}px` : `${playerDebug.dotOffsetX}px`}
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={-Math.round((activeConfig.patternPeriod || 100) * 0.75)}
-                      max={Math.round((activeConfig.patternPeriod || 100) * 0.75)}
-                      step={1}
-                      value={playerDebug.dotOffsetX}
-                      onChange={(e) =>
-                        setPlayerDebug((prev) => ({ ...prev, dotOffsetX: parseInt(e.target.value) }))
-                      }
-                      className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                    />
-                    <div className="flex gap-1 mt-1.5">
-                      <button
-                        onClick={() => setPlayerDebug((prev) => ({ ...prev, dotOffsetX: 0 }))}
-                        className="flex-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300 transition cursor-pointer"
-                      >
-                        Center (0)
-                      </button>
-                      <button
-                        onClick={() =>
-                          setPlayerDebug((prev) => ({
-                            ...prev,
-                            dotOffsetX: -Math.round((activeConfig.patternPeriod || 100) / 2),
-                          }))
-                        }
-                        className="flex-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300 transition cursor-pointer"
-                        title="Shift -S/2 left to lock left eye onto center"
-                      >
-                        -Half Period
-                      </button>
-                      <button
-                        onClick={() =>
-                          setPlayerDebug((prev) => ({
-                            ...prev,
-                            dotOffsetX: Math.round((activeConfig.patternPeriod || 100) / 2),
-                          }))
-                        }
-                        className="flex-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300 transition cursor-pointer"
-                        title="Shift +S/2 right"
-                      >
-                        +Half Period
-                      </button>
-                    </div>
+                    {(() => {
+                      const period = activeConfig.patternPeriod || 100;
+                      const defaultOffset = -Math.round(period / 2);
+                      const currentVal = playerDebug.dotOffsetX !== undefined ? playerDebug.dotOffsetX : defaultOffset;
+                      const isDefault = playerDebug.dotOffsetX === undefined || playerDebug.dotOffsetX === defaultOffset;
+
+                      return (
+                        <>
+                          <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                            <span>Center Parallax Offset (X Shift)</span>
+                            <span className="font-mono text-amber-300">
+                              {currentVal > 0 ? `+${currentVal}px` : `${currentVal}px`} {isDefault ? '(Default -S/2)' : ''}
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={-Math.round(period * 0.75)}
+                            max={Math.round(period * 0.75)}
+                            step={1}
+                            value={currentVal}
+                            onChange={(e) =>
+                              setPlayerDebug((prev) => ({ ...prev, dotOffsetX: parseInt(e.target.value) }))
+                            }
+                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                          />
+                          <div className="flex gap-1 mt-1.5">
+                            <button
+                              onClick={() => setPlayerDebug((prev) => ({ ...prev, dotOffsetX: defaultOffset }))}
+                              className={`flex-1 py-0.5 rounded text-[9px] font-semibold transition cursor-pointer ${
+                                isDefault ? 'bg-amber-600 text-white shadow-sm' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                              }`}
+                              title="Default: -Half period (-S/2) shifts dots left to lock fused center dot directly on ridge"
+                            >
+                              -Half Period (Default)
+                            </button>
+                            <button
+                              onClick={() => setPlayerDebug((prev) => ({ ...prev, dotOffsetX: 0 }))}
+                              className={`flex-1 py-0.5 rounded text-[9px] transition cursor-pointer ${
+                                playerDebug.dotOffsetX === 0 ? 'bg-amber-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                              }`}
+                            >
+                              Center (0)
+                            </button>
+                            <button
+                              onClick={() => setPlayerDebug((prev) => ({ ...prev, dotOffsetX: Math.round(period / 2) }))}
+                              className="flex-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300 transition cursor-pointer"
+                              title="Shift +S/2 right"
+                            >
+                              +Half Period
+                            </button>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Visual Guide explanation */}
+                  <div className="p-2 rounded-lg bg-indigo-950/40 border border-indigo-500/20 text-[10px] text-indigo-200 leading-normal">
+                    👀 <strong>Binocular Fusion Guide:</strong> When focusing your eyes in 3D, you will see <strong>three dots</strong>. The <strong>center dot</strong> is the fused 3D player — steer with this center dot to stay on the ridges!
                   </div>
                 </div>
               )}
@@ -1672,9 +1689,8 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
                       baseZ: 0.50,
                       bevelRatio: 0.35,
                       dualDotMode: 'overlay',
-                      dualDotColor: '#6366f1',
+                      dualDotColor: '#ffffff',
                       dualDotRadius: 5,
-                      dotOffsetX: 0,
                     })
                   }
                   className="text-[10px] text-amber-400 hover:text-amber-300 font-semibold underline cursor-pointer"
