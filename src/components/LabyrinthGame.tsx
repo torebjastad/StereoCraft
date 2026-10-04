@@ -139,7 +139,7 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     dualDotRadius: number;
     dotOffsetX?: number; // Optional user offset; defaults to -Half period (-S/2) for exact ridge alignment
   }>({
-    shape: 'square',
+    shape: 'dual-dots',
     sizeMultiplier: 1.0,
     depth: 0.98,
     baseZ: 0.50,
@@ -1683,7 +1683,7 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
                 <button
                   onClick={() =>
                     setPlayerDebug({
-                      shape: 'square',
+                      shape: 'dual-dots',
                       sizeMultiplier: 1.0,
                       depth: 0.98,
                       baseZ: 0.50,
