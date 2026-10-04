@@ -137,6 +137,7 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     dualDotMode: 'overlay' | 'depth' | 'both';
     dualDotColor: string;
     dualDotRadius: number;
+    dotOffsetX: number; // Calibration shift in pixels so fused dot aligns over ridge
   }>({
     shape: 'square',
     sizeMultiplier: 1.0,
@@ -146,6 +147,7 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     dualDotMode: 'overlay',
     dualDotColor: '#6366f1',
     dualDotRadius: 5,
+    dotOffsetX: 0,
   });
 
   const playerDebugRef = useRef(playerDebug);
@@ -458,10 +460,13 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
   const drawDualDotsOverlay = useCallback((ctx: CanvasRenderingContext2D, px: number, py: number) => {
     const period = activeConfig.patternPeriod || 100;
     const dispFraction = (activeConfig.maxDisparity ?? 15) / period;
-    const sep = calculatePlayerDotSeparation(period, playerDebugRef.current.depth, dispFraction, 'parallel');
+    const pD = playerDebugRef.current;
+    const sep = calculatePlayerDotSeparation(period, pD.depth, dispFraction, 'parallel');
     const halfSep = Math.round(sep / 2);
-    const radius = playerDebugRef.current.dualDotRadius;
-    const color = playerDebugRef.current.dualDotColor;
+    const radius = pD.dualDotRadius;
+    const color = pD.dualDotColor;
+    // Calibrated center X taking into account the user calibration offset
+    const cx = px + (pD.dotOffsetX || 0);
 
     ctx.save();
     ctx.shadowColor = color;
@@ -472,18 +477,43 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
 
     // Left Dot
     ctx.beginPath();
-    ctx.arc(px - halfSep, py, radius, 0, Math.PI * 2);
+    ctx.arc(cx - halfSep, py, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
     // Right Dot
     ctx.beginPath();
-    ctx.arc(px + halfSep, py, radius, 0, Math.PI * 2);
+    ctx.arc(cx + halfSep, py, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
     ctx.restore();
   }, [activeConfig.patternPeriod, activeConfig.maxDisparity]);
+
+  // Helper to cleanly restore stereogram background beneath previous dual dots (zero smearing)
+  const clearPreviousDotsOverlay = useCallback((ctx: CanvasRenderingContext2D, activeImg: ImageData, px: number, py: number) => {
+    const period = activeConfig.patternPeriod || 100;
+    const dispFraction = (activeConfig.maxDisparity ?? 15) / period;
+    const pD = playerDebugRef.current;
+    const sep = calculatePlayerDotSeparation(period, pD.depth, dispFraction, 'parallel');
+    const halfSep = Math.round(sep / 2);
+    const cx = px + (pD.dotOffsetX || 0);
+    // Large padding covering the dot radius (up to 14px), shadow glow (10px) + safety margin
+    const clearPad = pD.dualDotRadius + 18;
+
+    const clearRegion = (dotX: number, dotY: number) => {
+      const sx = Math.max(0, Math.floor(dotX - clearPad));
+      const sy = Math.max(0, Math.floor(dotY - clearPad));
+      const sw = Math.min(activeWidth - sx, Math.ceil(clearPad * 2));
+      const sh = Math.min(activeHeight - sy, Math.ceil(clearPad * 2));
+      if (sw > 0 && sh > 0) {
+        ctx.putImageData(activeImg, 0, 0, sx, sy, sw, sh);
+      }
+    };
+
+    clearRegion(cx - halfSep, py);
+    clearRegion(cx + halfSep, py);
+  }, [activeConfig.patternPeriod, activeConfig.maxDisparity, activeWidth, activeHeight]);
 
   const renderPeekingRows = (
     ctx: CanvasRenderingContext2D,
@@ -759,6 +789,12 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
               viewingMode: 'parallel' as const,
             };
 
+            // Clear previous 2D dual dots if they were drawn on canvas overlay
+            const hadOverlayDots = pD.shape === 'dual-dots' && (pD.dualDotMode === 'overlay' || pD.dualDotMode === 'both');
+            if (hadOverlayDots) {
+              clearPreviousDotsOverlay(ctx, activeImg, prevBall.x, prevBall.y);
+            }
+
             if (shouldRenderInDepth) {
               // Step 1: Erase previous player shape from working depth buffer
               erasePlayerShapeDepth(depth, cleanDepth, activeWidth, activeHeight, prevBall.x, prevBall.y, prevSize, shapeOpts);
@@ -789,26 +825,6 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
               } else {
                 ctx.putImageData(activeImg, 0, 0, 0, minY, activeWidth, maxY - minY + 1);
               }
-            } else {
-              // Overlay-only dual-dots: restore previous 2D dot dirty rects from activeImg
-              const period = activeConfig.patternPeriod || 100;
-              const dispFrac = (activeConfig.maxDisparity ?? 15) / period;
-              const prevSep = calculatePlayerDotSeparation(period, pD.depth, dispFrac, 'parallel');
-              const prevHalfSep = Math.round(prevSep / 2);
-              const clearPad = pD.dualDotRadius + 6;
-
-              const clearRegion = (cx: number, cy: number) => {
-                const sx = Math.max(0, Math.floor(cx - clearPad));
-                const sy = Math.max(0, Math.floor(cy - clearPad));
-                const sw = Math.min(activeWidth - sx, clearPad * 2);
-                const sh = Math.min(activeHeight - sy, clearPad * 2);
-                if (sw > 0 && sh > 0) {
-                  ctx.putImageData(activeImg, 0, 0, sx, sy, sw, sh);
-                }
-              };
-
-              clearRegion(prevBall.x - prevHalfSep, prevBall.y);
-              clearRegion(prevBall.x + prevHalfSep, prevBall.y);
             }
 
             // If dual dots overlay is enabled (overlay or both), draw new 2D dual dots
@@ -1502,6 +1518,59 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
                       className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
                     />
                   </div>
+
+                  {/* Horizontal Calibration Offset */}
+                  <div>
+                    <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                      <span>Center Parallax Offset (X Shift)</span>
+                      <span className="font-mono text-amber-300">
+                        {playerDebug.dotOffsetX > 0 ? `+${playerDebug.dotOffsetX}px` : `${playerDebug.dotOffsetX}px`}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-Math.round((activeConfig.patternPeriod || 100) * 0.75)}
+                      max={Math.round((activeConfig.patternPeriod || 100) * 0.75)}
+                      step={1}
+                      value={playerDebug.dotOffsetX}
+                      onChange={(e) =>
+                        setPlayerDebug((prev) => ({ ...prev, dotOffsetX: parseInt(e.target.value) }))
+                      }
+                      className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                    />
+                    <div className="flex gap-1 mt-1.5">
+                      <button
+                        onClick={() => setPlayerDebug((prev) => ({ ...prev, dotOffsetX: 0 }))}
+                        className="flex-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300 transition cursor-pointer"
+                      >
+                        Center (0)
+                      </button>
+                      <button
+                        onClick={() =>
+                          setPlayerDebug((prev) => ({
+                            ...prev,
+                            dotOffsetX: -Math.round((activeConfig.patternPeriod || 100) / 2),
+                          }))
+                        }
+                        className="flex-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300 transition cursor-pointer"
+                        title="Shift -S/2 left to lock left eye onto center"
+                      >
+                        -Half Period
+                      </button>
+                      <button
+                        onClick={() =>
+                          setPlayerDebug((prev) => ({
+                            ...prev,
+                            dotOffsetX: Math.round((activeConfig.patternPeriod || 100) / 2),
+                          }))
+                        }
+                        className="flex-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300 transition cursor-pointer"
+                        title="Shift +S/2 right"
+                      >
+                        +Half Period
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1605,6 +1674,7 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
                       dualDotMode: 'overlay',
                       dualDotColor: '#6366f1',
                       dualDotRadius: 5,
+                      dotOffsetX: 0,
                     })
                   }
                   className="text-[10px] text-amber-400 hover:text-amber-300 font-semibold underline cursor-pointer"
