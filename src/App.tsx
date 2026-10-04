@@ -562,7 +562,7 @@ export const App: React.FC = () => {
   };
 
   // Load Presets scaled to current canvas resolution
-  const handleLoadPreset = (presetName: string) => {
+  const handleLoadPreset = useCallback((presetName: string) => {
     let presetShapes: ShapeObject[] = [];
     let selectedId = '';
 
@@ -799,8 +799,10 @@ export const App: React.FC = () => {
         selectedId = 'typo-1';
         break;
 
+      case 'snake':
       case 'skull': {
-        const skullUrl = `${import.meta.env.BASE_URL}presets/skull-depthmap.jpg`;
+        const isSnake = presetName === 'snake';
+        const imgUrl = `${import.meta.env.BASE_URL}presets/${isSnake ? 'snake-depthmap.jpg' : 'skull-depthmap.jpg'}`;
         const img = new Image();
         img.onload = () => {
           const offscreen = document.createElement('canvas');
@@ -819,10 +821,11 @@ export const App: React.FC = () => {
             grayBuffer[i] = Math.round(lum * (data[p + 3] / 255.0));
           }
 
-          const baseW = 440;
-          const baseH = 440;
-          const skullShape: ShapeObject = {
-            id: 'preset-skull-img',
+          const baseW = isSnake ? 680 : 440;
+          const baseH = isSnake ? Math.round(680 * (img.height / img.width)) : 440;
+          const shapeId = isSnake ? 'preset-snake-img' : 'preset-skull-img';
+          const shape: ShapeObject = {
+            id: shapeId,
             type: 'image',
             x: 400,
             y: 300,
@@ -834,27 +837,41 @@ export const App: React.FC = () => {
             imageData: grayBuffer,
             imageWidth: img.width,
             imageHeight: img.height,
-            imageUrl: skullUrl,
+            imageUrl: imgUrl,
             invertDepth: false,
           };
 
-          const scaled = [scalePresetShape(skullShape, dimensions.width, dimensions.height)];
+          const curW = dimensionsRef.current.width;
+          const curH = dimensionsRef.current.height;
+          const scaled = [scalePresetShape(shape, curW, curH)];
           setShapes(scaled);
-          setSelectedShapeId('preset-skull-img');
+          setSelectedShapeId(shapeId);
         };
-        img.src = skullUrl;
+        img.onerror = (err) => {
+          console.warn(`Failed to load preset depthmap image: ${imgUrl}`, err);
+        };
+        img.src = imgUrl;
         return;
       }
     }
 
     if (presetShapes.length > 0) {
+      const curW = dimensionsRef.current.width;
+      const curH = dimensionsRef.current.height;
       const scaled = presetShapes.map((s) =>
-        scalePresetShape(s, dimensions.width, dimensions.height)
+        scalePresetShape(s, curW, curH)
       );
       setShapes(scaled);
       setSelectedShapeId(selectedId);
     }
-  };
+  }, []);
+
+  // Load default snake depthmap on initial mount in Studio mode
+  useEffect(() => {
+    if (initialUrlState.mode === 'studio') {
+      handleLoadPreset('snake');
+    }
+  }, [handleLoadPreset]);
 
   // Export & Print handlers
   const handleExportStereogram = useCallback(() => {

@@ -141,7 +141,21 @@ export const Header: React.FC<HeaderProps> = ({
                 <Layers className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Presets</span>
               </button>
-              <div className="absolute top-full left-0 mt-1 hidden group-hover:flex flex-col py-1.5 px-1 w-44 rounded-xl bg-slate-900 border border-slate-800 shadow-xl z-30">
+              <div className="absolute top-full left-0 mt-1 hidden group-hover:flex flex-col py-1.5 px-1 w-56 rounded-xl bg-slate-900 border border-slate-800 shadow-xl z-30">
+                <button
+                  onClick={() => onLoadPreset('snake')}
+                  className="px-2.5 py-1.5 text-left text-xs text-slate-300 hover:bg-emerald-600/25 hover:text-white rounded-lg transition flex items-center justify-between"
+                >
+                  <span>🐍 3D Snake Depthmap</span>
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">DEFAULT</span>
+                </button>
+                <button
+                  onClick={() => onLoadPreset('skull')}
+                  className="px-2.5 py-1.5 text-left text-xs text-slate-300 hover:bg-purple-600/25 hover:text-white rounded-lg transition flex items-center justify-between"
+                >
+                  <span>💀 3D Skull Depthmap</span>
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-purple-500/20 text-purple-300 font-bold">IMAGE</span>
+                </button>
                 <button
                   onClick={() => onLoadPreset('constellation')}
                   className="px-2.5 py-1.5 text-left text-xs text-slate-300 hover:bg-indigo-600/20 hover:text-white rounded-lg transition"
@@ -171,13 +185,6 @@ export const Header: React.FC<HeaderProps> = ({
                   className="px-2.5 py-1.5 text-left text-xs text-slate-300 hover:bg-indigo-600/20 hover:text-white rounded-lg transition"
                 >
                   🔤 3D Typography
-                </button>
-                <button
-                  onClick={() => onLoadPreset('skull')}
-                  className="px-2.5 py-1.5 text-left text-xs text-slate-300 hover:bg-purple-600/25 hover:text-white rounded-lg transition flex items-center justify-between"
-                >
-                  <span>💀 3D Skull Depthmap</span>
-                  <span className="text-[9px] px-1 py-0.2 rounded bg-purple-500/20 text-purple-300 font-bold">IMAGE</span>
                 </button>
               </div>
             </div>
