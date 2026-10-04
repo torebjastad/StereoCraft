@@ -172,6 +172,13 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                   🔤 3D Typography
                 </button>
+                <button
+                  onClick={() => onLoadPreset('skull')}
+                  className="px-2.5 py-1.5 text-left text-xs text-slate-300 hover:bg-purple-600/25 hover:text-white rounded-lg transition flex items-center justify-between"
+                >
+                  <span>💀 3D Skull Depthmap</span>
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-purple-500/20 text-purple-300 font-bold">IMAGE</span>
+                </button>
               </div>
             </div>
           </>

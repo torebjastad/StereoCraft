@@ -798,6 +798,53 @@ export const App: React.FC = () => {
         ];
         selectedId = 'typo-1';
         break;
+
+      case 'skull': {
+        const skullUrl = `${import.meta.env.BASE_URL}presets/skull-depthmap.jpg`;
+        const img = new Image();
+        img.onload = () => {
+          const offscreen = document.createElement('canvas');
+          offscreen.width = img.width;
+          offscreen.height = img.height;
+          const ctx = offscreen.getContext('2d');
+          if (!ctx) return;
+          ctx.drawImage(img, 0, 0);
+          const raw = ctx.getImageData(0, 0, img.width, img.height);
+          const data = raw.data;
+
+          const grayBuffer = new Uint8ClampedArray(img.width * img.height);
+          for (let i = 0; i < grayBuffer.length; i++) {
+            const p = i * 4;
+            const lum = 0.2126 * data[p] + 0.7152 * data[p + 1] + 0.0722 * data[p + 2];
+            grayBuffer[i] = Math.round(lum * (data[p + 3] / 255.0));
+          }
+
+          const baseW = 440;
+          const baseH = 440;
+          const skullShape: ShapeObject = {
+            id: 'preset-skull-img',
+            type: 'image',
+            x: 400,
+            y: 300,
+            width: baseW,
+            height: baseH,
+            rotation: 0,
+            depth: 0.98,
+            profile: 'flat',
+            imageData: grayBuffer,
+            imageWidth: img.width,
+            imageHeight: img.height,
+            imageUrl: skullUrl,
+            invertDepth: false,
+          };
+
+          const scaled = [scalePresetShape(skullShape, dimensions.width, dimensions.height)];
+          setShapes(scaled);
+          setSelectedShapeId('preset-skull-img');
+        };
+        img.src = skullUrl;
+        return;
+      }
     }
 
     if (presetShapes.length > 0) {
