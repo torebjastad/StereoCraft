@@ -223,9 +223,9 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     const startX = bounds.x + bounds.cellW / 2;
     const startY = bounds.y + bounds.cellH / 2;
     const squareSize = labyrinthMode === 'inverted'
-      ? Math.max(10, Math.floor(bounds.gap * 0.80))
+      ? Math.max(16, Math.round(bounds.gap * 1.35))
       : bounds.gap;
-    const radius = Math.max(3, Math.floor(squareSize * 0.46));
+    const radius = Math.max(3, Math.floor((labyrinthMode === 'inverted' ? bounds.gap : squareSize) * 0.44));
     return {
       x: startX,
       y: startY,
@@ -472,8 +472,8 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
     renderTextDepth(depth, activeWidth, activeHeight, initialText, textX, textY, textScale, 0.96);
 
     // 4. Render initial 3D player Floating Square / Cube into working depth buffer
-    const squareSize = initialBall.size || bounds.gap;
-    renderFloatingSquareDepth(depth, activeWidth, activeHeight, initialBall.x, initialBall.y, squareSize, 0.98);
+    const squareSize = initialBall.size || (labyrinthMode === 'inverted' ? Math.round(bounds.gap * 1.35) : bounds.gap);
+    renderFloatingSquareDepth(depth, activeWidth, activeHeight, initialBall.x, initialBall.y, squareSize, 0.96, { beveled: true });
 
     // 5. Generate active stereogram with continuous texture-coordinate engine
     const activeStereogram = generateLabyrinthStereogram(depth, activeWidth, activeHeight, {
@@ -647,7 +647,7 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
             eraseFloatingSquareDepth(depth, cleanDepth, activeWidth, activeHeight, prevBall.x, prevBall.y, prevSize);
 
             // Step 2: Render new 3D floating square into working depth buffer
-            renderFloatingSquareDepth(depth, activeWidth, activeHeight, currBall.x, currBall.y, currSize, 0.98);
+            renderFloatingSquareDepth(depth, activeWidth, activeHeight, currBall.x, currBall.y, currSize, 0.96, { beveled: true });
 
             // Step 3: Compute minimal dirty scanlines span for the square movement
             const prevHalf = Math.ceil(prevSize / 2);

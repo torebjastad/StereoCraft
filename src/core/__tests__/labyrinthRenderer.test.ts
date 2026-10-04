@@ -299,22 +299,23 @@ describe('labyrinthRenderer', () => {
     // Far corner outside maze should be deep chasm (~0.05)
     expect(invDepth[0]).toBeCloseTo(0.05, 2);
 
-    // Start cell center must be an elevated ridge (~0.82)
+    // Start cell center must be an elevated ridge (~0.58, distinctly below player square ~0.96)
     const startCenterX = Math.round(bounds.x + bounds.cellW / 2);
     const startCenterY = Math.round(bounds.y + bounds.cellH / 2);
     const startIdx = startCenterY * width + startCenterX;
-    expect(invDepth[startIdx]).toBeGreaterThan(0.75);
+    expect(invDepth[startIdx]).toBeGreaterThan(0.50);
+    expect(invDepth[startIdx]).toBeLessThan(0.70);
 
-    // Goal cell ridge must be elevated (~0.82)
+    // Goal cell ridge must be elevated (~0.58)
     const goalCenterX = Math.round(bounds.x + maze.goalX * bounds.cellW + bounds.cellW / 2);
     const goalCenterY = Math.round(bounds.y + maze.goalY * bounds.cellH + bounds.cellH / 2);
     const goalIdx = goalCenterY * width + goalCenterX;
-    expect(invDepth[goalIdx]).toBeGreaterThan(0.75);
+    expect(invDepth[goalIdx]).toBeGreaterThan(0.50);
 
-    // Landing platform outside the maze must be elevated (> 0.80)
+    // Landing platform outside the maze must be elevated (> 0.60)
     const platformX = Math.min(width - 8, Math.round(bounds.x + bounds.width + bounds.cellW * 0.9));
     const platformIdx = goalCenterY * width + platformX;
-    expect(invDepth[platformIdx]).toBeGreaterThan(0.80);
+    expect(invDepth[platformIdx]).toBeGreaterThan(0.60);
   });
 
   it('checks isPointOnRidge accurately and detects falling off into the abyss', () => {
@@ -433,6 +434,27 @@ describe('labyrinthRenderer', () => {
     const step = stepBallPhysics(onBridgeBall, maze, bounds, { x: 1, y: 0 }, 0.05, { isInverted: true });
     expect(step.hasReachedGoal).toBe(true);
     expect(step.hasFallen).toBe(false);
+  });
+
+  it('renders player square with elevated plateau and beveled tapering sides', () => {
+    const depth = new Float32Array(width * height);
+    const cx = 200;
+    const cy = 150;
+    const size = 30;
+    renderFloatingSquareDepth(depth, width, height, cx, cy, size, 0.96, { beveled: true });
+
+    // Center pixel should be at top plateau (0.96)
+    const centerIdx = cy * width + cx;
+    expect(depth[centerIdx]).toBeCloseTo(0.96, 2);
+
+    // Pixel close to edge should be beveled (tapered lower than 0.96 but above 0.50)
+    const edgeIdx = cy * width + (cx + Math.floor(size / 2) - 1);
+    expect(depth[edgeIdx]).toBeLessThan(0.96);
+    expect(depth[edgeIdx]).toBeGreaterThan(0.50);
+
+    // Pixel outside square should be 0
+    const outsideIdx = cy * width + (cx + Math.floor(size / 2) + 2);
+    expect(depth[outsideIdx]).toBe(0);
   });
 });
 

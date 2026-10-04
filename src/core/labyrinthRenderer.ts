@@ -262,7 +262,7 @@ export function renderInvertedMazeDepth(
   const { x: ox, y: oy, cellW, cellH, gap } = bounds;
 
   const chasmZ = 0.05; // Bottomless abyss
-  const ridgeZ = 0.82; // High elevated ridge pathway
+  const ridgeZ = 0.58; // Elevated ridge pathway (differentiated below player square ~0.96)
 
   // 1. Fill canvas with chasm depth
   depthBuffer.fill(chasmZ);
@@ -317,7 +317,7 @@ export function renderInvertedMazeDepth(
   const platformDim = Math.max(20, Math.floor(cellDim * 1.15));
   const platformCenterX = Math.min(canvasWidth - platformDim / 2 - 4, ox + bounds.width + bridgeLen + platformDim / 2);
   const platformCenterY = goalCenterY;
-  const platformZ = 0.88; // Crisp, solid elevated plateau
+  const platformZ = 0.68; // Elevated landing platform above ridge
 
   // Draw connecting ridge bridge extending out of the maze to the platform
   drawRidgeRect(goalCenterX, goalCenterY - halfRidge, platformCenterX - goalCenterX, ridgeWidth);
@@ -421,11 +421,9 @@ export function isPointOnRidge(
 }
 
 /**
- * Renders a 3D floating square plateau (svevende firkant) into the depth buffer.
- * Spans the corridor gap between maze walls at an elevated plateau (0.98),
- * hovering visibly above the maze walls (0.88).
- * Because it is a flat plateau (like the walls), all points have equal elevation,
- * preventing any self-occlusion artifacts and providing an unmistakable 3D planar tile!
+ * Renders a 3D beveled floating player square tile into the depth buffer.
+ * Features an elevated top plateau (squareZ ~ 0.96) and smooth chamfered/beveled
+ * sides tapering down to baseZ (~0.50), providing clear 3D depth tapering visible from all angles!
  */
 export function renderFloatingSquareDepth(
   depthBuffer: Float32Array,
@@ -434,18 +432,35 @@ export function renderFloatingSquareDepth(
   x: number,
   y: number,
   size: number,
-  squareZ: number = 0.98
+  squareZ: number = 0.98,
+  options?: { beveled?: boolean; bevelRatio?: number; baseZ?: number }
 ): void {
   const halfSize = Math.floor(size / 2);
   const minX = Math.max(0, Math.round(x - halfSize));
   const maxX = Math.min(width - 1, Math.round(x + halfSize));
   const minY = Math.max(0, Math.round(y - halfSize));
   const maxY = Math.min(height - 1, Math.round(y + halfSize));
+  const isBeveled = options?.beveled === true;
+  const bevelDist = Math.max(2, Math.floor(halfSize * (options?.bevelRatio ?? 0.35)));
+  const baseZ = options?.baseZ ?? 0.50;
 
   for (let py = minY; py <= maxY; py++) {
     const rowOffset = py * width;
+    const dy = Math.min(py - (y - halfSize), (y + halfSize) - py);
+
     for (let px = minX; px <= maxX; px++) {
-      depthBuffer[rowOffset + px] = Math.max(depthBuffer[rowOffset + px], squareZ);
+      const dx = Math.min(px - (x - halfSize), (x + halfSize) - px);
+      const edgeDist = Math.min(dx, dy);
+
+      let zVal = squareZ;
+      if (isBeveled && edgeDist < bevelDist) {
+        const t = Math.max(0, Math.min(1, edgeDist / bevelDist));
+        const smoothT = t * t * (3 - 2 * t);
+        zVal = baseZ + (squareZ - baseZ) * smoothT;
+      }
+
+      const idx = rowOffset + px;
+      depthBuffer[idx] = Math.max(depthBuffer[idx], zVal);
     }
   }
 }
@@ -462,7 +477,7 @@ export function eraseFloatingSquareDepth(
   y: number,
   size: number
 ): void {
-  const halfSize = Math.floor(size / 2);
+  const halfSize = Math.floor(size / 2) + 1;
   const minX = Math.max(0, Math.round(x - halfSize));
   const maxX = Math.min(width - 1, Math.round(x + halfSize));
   const minY = Math.max(0, Math.round(y - halfSize));
