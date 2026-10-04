@@ -166,6 +166,12 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                   🎯 Nested Rings
                 </button>
+                <button
+                  onClick={() => onLoadPreset('typography')}
+                  className="px-2.5 py-1.5 text-left text-xs text-slate-300 hover:bg-indigo-600/20 hover:text-white rounded-lg transition"
+                >
+                  🔤 3D Typography
+                </button>
               </div>
             </div>
           </>

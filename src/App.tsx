@@ -65,6 +65,20 @@ const INITIAL_SHAPES: ShapeObject[] = [
     depth: 0.75,
     profile: 'pyramid',
   },
+  {
+    id: 'shape-text-demo',
+    type: 'text',
+    x: 400,
+    y: 110,
+    width: 240,
+    height: 90,
+    rotation: 0,
+    depth: 0.95,
+    profile: 'beveled',
+    text: '3D MAGIC',
+    fontFamily: 'impact',
+    fontBold: true,
+  },
 ];
 
 // Helper to scale shapes uniformly from reference 800x600 canvas to target dimensions
@@ -575,6 +589,20 @@ export const App: React.FC = () => {
             depth: 0.7,
             profile: 'pyramid',
           },
+          {
+            id: 'st-text',
+            type: 'text',
+            x: 400,
+            y: 110,
+            width: 220,
+            height: 70,
+            rotation: 0,
+            depth: 0.9,
+            profile: 'beveled',
+            text: 'STARS',
+            fontFamily: 'impact',
+            fontBold: true,
+          },
         ];
         selectedId = 'st-c';
         break;
@@ -707,8 +735,70 @@ export const App: React.FC = () => {
             depth: 1.0,
             profile: 'dome',
           },
+          {
+            id: 't-text',
+            type: 'text',
+            x: 400,
+            y: 300,
+            width: 140,
+            height: 60,
+            rotation: 0,
+            depth: 1.0,
+            profile: 'flat',
+            text: 'BULLSEYE',
+            fontFamily: 'impact',
+            fontBold: true,
+          },
         ];
         selectedId = 't-inner';
+        break;
+
+      case 'typography':
+        presetShapes = [
+          {
+            id: 'typo-1',
+            type: 'text',
+            x: 400,
+            y: 190,
+            width: 320,
+            height: 90,
+            rotation: 0,
+            depth: 0.95,
+            profile: 'beveled',
+            text: 'STEREO',
+            fontFamily: 'impact',
+            fontBold: true,
+          },
+          {
+            id: 'typo-2',
+            type: 'text',
+            x: 400,
+            y: 300,
+            width: 280,
+            height: 90,
+            rotation: 0,
+            depth: 0.75,
+            profile: 'beveled',
+            text: 'CRAFT',
+            fontFamily: 'impact',
+            fontBold: true,
+          },
+          {
+            id: 'typo-3',
+            type: 'text',
+            x: 400,
+            y: 410,
+            width: 180,
+            height: 70,
+            rotation: 0,
+            depth: 0.55,
+            profile: 'flat',
+            text: '3D TEXT',
+            fontFamily: 'sans',
+            fontBold: true,
+          },
+        ];
+        selectedId = 'typo-1';
         break;
     }
 
