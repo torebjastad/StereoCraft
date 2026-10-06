@@ -253,7 +253,7 @@ def run_batch_generation(
         # Step C: Generate Depth Map with Depth Anything V2
         print("  📐 Estimating Volumetric Depth with Depth Anything V2...")
         t1 = time.time()
-        depth_output = depth_pipe(rgb_image)
+        depth_output = depth_pipe(rgb_image.convert("RGB"))
         depth_raw = depth_output["depth"]  # PIL Image in uint8 or float
 
         # Normalize to ensure optimal stereogram dynamic range
