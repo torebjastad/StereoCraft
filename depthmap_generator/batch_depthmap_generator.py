@@ -85,25 +85,46 @@ MATERIALS = [
     "matte carbon-fiber and brushed pewter"
 ]
 
-def generate_batch_prompts(theme: str = "Animals from Africa", count: int = 5, use_ollama: bool = True, ollama_model: str = "qwen2.5:7b", host: str = "http://127.0.0.1:11434") -> list:
+def generate_batch_prompts(theme: str = "Animals from Africa", count: int = 5, render_style: str = "natural", use_ollama: bool = True, ollama_model: str = "qwen2.5:7b", host: str = "http://127.0.0.1:11434") -> list:
     """Uses Ollama LLM to brainstorm `count` diverse, distinct 3D stereogram figure prompts within `theme`."""
+    if render_style == "natural":
+        style_rules = (
+            "3. NATURAL 3D RENDER (NO CLAY/STONE): Render the subjects with authentic natural textures "
+            "(lifelike fur, detailed leathery skin, realistic scales, feathers, or glossy organic surfaces). "
+            "Do NOT use sculptured materials like clay or stone; render the subject as a living, photorealistic 3D creature."
+        )
+        sample = (
+            "A full 3D photorealistic digital render of a charging African bull elephant with realistic wrinkled gray "
+            "leathery skin and large curved ivory tusks thrusting forward toward the viewer, dynamic posture, lifelike textures, "
+            "dramatic studio rim lighting, isolated on solid pure black background, octane render, clean silhouette, 8k"
+        )
+    else:
+        style_rules = (
+            "3. SCULPTURE AESTHETIC: Specify physical sculpture materials (matte clay, marble, dark bronze, basalt stone)."
+        )
+        sample = (
+            "A 3D digital sculpture of a charging African bull elephant with long curved tusks and raised trunk pointing forward, "
+            "matte gray clay finish, studio rim lighting, isolated on solid pure black background, octane render, clean silhouette, 8k"
+        )
+
     if use_ollama:
         import urllib.request
         import json
         
         instruction = f"""You are an expert 3D stereogram prompt designer.
 Theme: "{theme}".
+Style Mode: {render_style}.
 Generate a list of exactly {count} completely different, unique 3D figures that fit this theme.
 
 CRITICAL RULES:
 1. SPECIFIC DISTINCT SUBJECTS: Each figure must be a completely different creature or character within "{theme}". (Example for "Animals from Africa": use 5 different species like an elephant, lion, rhino, leopard, crocodile). Do NOT repeat the same subject.
 2. STEREOGRAM 3D DEPTH: Explicitly describe dramatic forward-protruding elements facing directly toward the viewer (horns, tusks, snout, open jaws, outstretched paws, limbs).
-3. SCULPTURE AESTHETIC: Specify physical sculpture materials (matte clay, marble, dark bronze, basalt stone), dramatic studio rim lighting, octane render, 8k.
+{style_rules}
 4. ISOLATED SILHOUETTE: Must be explicitly "isolated on pure solid black background" with clean edges and zero background clutter.
 
 Return ONLY a valid JSON list of {count} prompt strings.
 Format:
-["prompt 1", "prompt 2", ...]"""
+["{sample}", ...]"""
 
         try:
             req = urllib.request.Request(
@@ -174,8 +195,9 @@ Format:
 def run_batch_generation(
     num_images: int = 5,
     theme: str = "Animals from Africa",
+    aspect_ratio: str = "3:2",
+    render_style: str = "natural",
     output_dir: str = "./outputs",
-    aspect_ratio: str = "1:1",
     resolution_scale: float = 0.5,
     num_steps: int = 30,
     guidance_scale: float = 4.0,
@@ -196,14 +218,16 @@ def run_batch_generation(
     print("=" * 70)
     print("🚀 STEREOGRAM DEPTH MAP BATCH GENERATOR")
     print(f"  Theme:           \"{theme}\"")
+    print(f"  Render Style:    {render_style} (natural textures)")
+    print(f"  Aspect Ratio:    {aspect_ratio}")
     print(f"  Total Images:    {num_images}")
     print(f"  Output Dir:      {out_path.resolve()}")
     print(f"  Device:          {device} ({torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'})")
     print("=" * 70)
 
     # Brainstorm batch prompts for the theme
-    print(f"\n🧠 Generating {num_images} diverse figure prompts for theme: \"{theme}\"...")
-    prompts = generate_batch_prompts(theme=theme, count=num_images, use_ollama=use_ollama, ollama_model=ollama_model)
+    print(f"\n🧠 Generating {num_images} diverse figure prompts for theme: \"{theme}\" ({render_style} style)...")
+    prompts = generate_batch_prompts(theme=theme, count=num_images, render_style=render_style, use_ollama=use_ollama, ollama_model=ollama_model)
     print(f"✓ Planned {len(prompts)} unique prompts:")
     for idx, p in enumerate(prompts, 1):
         print(f"   [{idx}/{len(prompts)}] {p[:110]}...")
@@ -326,7 +350,8 @@ if __name__ == "__main__":
     parser.add_argument("--theme", type=str, default="Animals from Africa", help="Theme/category for 3D stereogram figures")
     parser.add_argument("--out", type=str, default="./outputs", help="Output directory")
     parser.add_argument("--scale", type=float, default=0.5, help="Resolution scale (0.5 = 1K, 1.0 = 2K)")
-    parser.add_argument("--aspect", type=str, default="1:1", choices=["1:1", "4:3", "16:9", "3:2"], help="Aspect ratio")
+    parser.add_argument("--aspect", type=str, default="3:2", choices=["3:2", "16:9", "4:3", "1:1", "2:3", "9:16"], help="Aspect ratio (default: 3:2)")
+    parser.add_argument("--style", type=str, default="natural", choices=["natural", "sculpture"], help="Render style: 'natural' (default: lifelike 3D) or 'sculpture' (matte clay/stone)")
     parser.add_argument("--steps", type=int, default=30, help="Inference steps")
     parser.add_argument("--ollama", action="store_true", help="Enable Ollama for dynamic prompts")
     parser.add_argument("--ollama-model", type=str, default="qwen2.5:7b", help="Ollama model name")
@@ -335,8 +360,9 @@ if __name__ == "__main__":
     run_batch_generation(
         num_images=args.count,
         theme=args.theme,
-        output_dir=args.out,
         aspect_ratio=args.aspect,
+        render_style=args.style,
+        output_dir=args.out,
         resolution_scale=args.scale,
         num_steps=args.steps,
         use_ollama=args.ollama,
