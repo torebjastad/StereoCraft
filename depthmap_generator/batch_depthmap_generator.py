@@ -170,7 +170,13 @@ def run_batch_generation(
     print("=" * 70)
 
     # 1. Load Qwen-Image-2.1 Pipeline
-    from diffusers import QwenImage21Pipeline
+    try:
+        from diffusers import QwenImage21Pipeline
+    except ImportError:
+        import subprocess
+        print("  -> Installing latest diffusers from GitHub for Qwen-Image-2.1 support...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "git+https://github.com/huggingface/diffusers.git"], check=True)
+        from diffusers import QwenImage21Pipeline
     from transformers import pipeline as hf_pipeline
 
     print("\n📦 [1/2] Loading Qwen-Image-2.1 Pipeline...")
