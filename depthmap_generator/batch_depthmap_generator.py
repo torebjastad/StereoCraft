@@ -94,8 +94,8 @@ def generate_batch_prompts(theme: str = "Animals from Africa", count: int = 5, r
             "Do NOT use sculptured materials like clay or stone; render the subject as a living, photorealistic 3D creature."
         )
         sample = (
-            "A full 3D photorealistic digital render of a charging African bull elephant with realistic wrinkled gray "
-            "leathery skin and large curved ivory tusks thrusting forward toward the viewer, dynamic posture, lifelike textures, "
+            f"A full 3D photorealistic digital render of [name of specific {theme} subject] with dynamic volumetric 3D posture, "
+            "prominent forward-protruding features facing the camera, authentic lifelike textures and organic details, "
             "dramatic studio rim lighting, isolated on solid pure black background, octane render, clean silhouette, 8k"
         )
     else:
@@ -103,8 +103,9 @@ def generate_batch_prompts(theme: str = "Animals from Africa", count: int = 5, r
             "3. SCULPTURE AESTHETIC: Specify physical sculpture materials (matte clay, marble, dark bronze, basalt stone)."
         )
         sample = (
-            "A 3D digital sculpture of a charging African bull elephant with long curved tusks and raised trunk pointing forward, "
-            "matte gray clay finish, studio rim lighting, isolated on solid pure black background, octane render, clean silhouette, 8k"
+            f"A 3D digital sculpture of [name of specific {theme} subject] with dynamic volumetric 3D posture, "
+            "prominent forward-protruding features facing the camera, matte gray clay finish, "
+            "studio rim lighting, isolated on solid pure black background, octane render, clean silhouette, 8k"
         )
 
     if use_ollama:
@@ -117,8 +118,8 @@ Style Mode: {render_style}.
 Generate a list of exactly {count} completely different, unique 3D figures that fit this theme.
 
 CRITICAL RULES:
-1. SPECIFIC DISTINCT SUBJECTS: Each figure must be a completely different creature or character within "{theme}". (Example for "Animals from Africa": use 5 different species like an elephant, lion, rhino, leopard, crocodile). Do NOT repeat the same subject.
-2. STEREOGRAM 3D DEPTH: Explicitly describe dramatic forward-protruding elements facing directly toward the viewer (horns, tusks, snout, open jaws, outstretched paws, limbs).
+1. SPECIFIC DISTINCT SUBJECTS: Each figure must be a completely different subject belonging strictly to "{theme}". All {count} items MUST belong directly to "{theme}". (Do NOT repeat the same subject, and do NOT include unrelated subjects).
+2. STEREOGRAM 3D DEPTH: Explicitly describe dramatic forward-protruding elements facing directly toward the viewer (horns, snout, open jaws, limbs, or structures protruding toward the camera).
 {style_rules}
 4. ISOLATED SILHOUETTE: Must be explicitly "isolated on pure solid black background" with clean edges and zero background clutter.
 
@@ -163,6 +164,11 @@ Format:
                     cleaned_prompts = []
                     for p in parsed:
                         p = p.replace("**", "").replace("Prompt:", "").strip().strip('"')
+                        # Drop accidental copy of the example template or leaked elephant
+                        if "[name of" in p or "[insert" in p:
+                            continue
+                        if "elephant" in p.lower() and "elephant" not in theme.lower() and "africa" not in theme.lower():
+                            continue
                         if len(p) > 25:
                             cleaned_prompts.append(p)
                     while len(cleaned_prompts) < count:
