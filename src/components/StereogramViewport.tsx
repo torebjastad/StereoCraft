@@ -8,14 +8,12 @@ import {
 import { renderDepthMap } from '../core/depthRenderer.ts';
 import { generateStereogram, createImageDataHelper } from '../core/stereogramEngine.ts';
 import { createCanvasTextRasterizer, clearTextLayoutCache } from '../utils/canvasText.ts';
-import { generateParallaxView } from '../core/wigglegram.ts';
 import { MeshReliefViewer } from './MeshReliefViewer.tsx';
 import { StageEditor } from './StageEditor.tsx';
 import {
   Eye,
   Layers,
   Box,
-  Activity,
   Sliders,
   Maximize,
   Maximize2,
@@ -68,9 +66,6 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
   onPrint,
 }) => {
   const [activeTab, setActiveTab] = useState<ViewTab>('stereogram');
-  const [peekAmount, setPeekAmount] = useState<number>(0); // 0 = 100% stereogram, 1 = 100% depth map
-  const [isWiggleActive, setIsWiggleActive] = useState<boolean>(false);
-  const [wiggleSpeed, setWiggleSpeed] = useState<number>(120); // ms per frame
   const [isHoldingPeek, setIsHoldingPeek] = useState<boolean>(false);
 
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -90,8 +85,7 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
     if (displayAreaRef.current) {
       const rect = displayAreaRef.current.getBoundingClientRect();
       const availW = Math.max(480, Math.floor((rect.width - 32) / 10) * 10);
-      const bottomPadding = activeTab === 'stereogram' ? 56 : 0;
-      const availH = Math.max(360, Math.floor((rect.height - 32 - bottomPadding) / 10) * 10);
+      const availH = Math.max(360, Math.floor((rect.height - 32) / 10) * 10);
       onFitToViewport?.(availW, availH);
     } else {
       onFitToViewport?.();
@@ -234,69 +228,45 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
     }
   }, [stereogramImageData, canvasWidth, canvasHeight, onStereogramRendered]);
 
-  // Handle Main Canvas Rendering with Peek and Wigglegram
+  // Handle Main Canvas Rendering with Hold to Peek
   useEffect(() => {
     const canvas = mainCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Normal or blended view
-    const currentPeek = isHoldingPeek ? 0.75 : peekAmount;
-
-    if (currentPeek === 0 && !isWiggleActive) {
+    if (!isHoldingPeek) {
       // Direct render stereogram
       ctx.putImageData(stereogramImageData, 0, 0);
       if (onStereogramRendered) onStereogramRendered(canvas);
       return;
     }
 
-    if (currentPeek > 0 && !isWiggleActive) {
-      // Blend stereogram with colored depth map
-      const blended = createImageDataHelper(canvasWidth, canvasHeight);
-      const bData = blended.data;
-      const sData = stereogramImageData.data;
+    // Blend stereogram with colored depth map while holding Peek
+    const currentPeek = 0.75;
+    const blended = createImageDataHelper(canvasWidth, canvasHeight);
+    const bData = blended.data;
+    const sData = stereogramImageData.data;
 
-      for (let i = 0; i < depthMap.length; i++) {
-        const z = depthMap[i];
-        const p = i * 4;
+    for (let i = 0; i < depthMap.length; i++) {
+      const z = depthMap[i];
+      const p = i * 4;
 
-        // Depth map with nice cyan-indigo heatmap glow
-        const dzR = Math.round(z * 99);
-        const dzG = Math.round(z * 102);
-        const dzB = Math.round(z * 241);
+      // Depth map with nice cyan-indigo heatmap glow
+      const dzR = Math.round(z * 99);
+      const dzG = Math.round(z * 102);
+      const dzB = Math.round(z * 241);
 
-        bData[p] = Math.round(sData[p] * (1 - currentPeek) + dzR * currentPeek);
-        bData[p + 1] = Math.round(sData[p + 1] * (1 - currentPeek) + dzG * currentPeek);
-        bData[p + 2] = Math.round(sData[p + 2] * (1 - currentPeek) + dzB * currentPeek);
-        bData[p + 3] = 255;
-      }
-      ctx.putImageData(blended, 0, 0);
-      return;
+      bData[p] = Math.round(sData[p] * (1 - currentPeek) + dzR * currentPeek);
+      bData[p + 1] = Math.round(sData[p + 1] * (1 - currentPeek) + dzG * currentPeek);
+      bData[p + 2] = Math.round(sData[p + 2] * (1 - currentPeek) + dzB * currentPeek);
+      bData[p + 3] = 255;
     }
-
-    // Wigglegram animation loop
-    if (isWiggleActive) {
-      let isLeft = true;
-      const parallaxShift = 10;
-      const leftView = generateParallaxView(stereogramImageData, depthMap, canvasWidth, canvasHeight, -parallaxShift);
-      const rightView = generateParallaxView(stereogramImageData, depthMap, canvasWidth, canvasHeight, parallaxShift);
-
-      const intervalId = setInterval(() => {
-        if (!ctx) return;
-        ctx.putImageData(isLeft ? leftView : rightView, 0, 0);
-        isLeft = !isLeft;
-      }, wiggleSpeed);
-
-      return () => clearInterval(intervalId);
-    }
+    ctx.putImageData(blended, 0, 0);
   }, [
     stereogramImageData,
     depthMap,
-    peekAmount,
     isHoldingPeek,
-    isWiggleActive,
-    wiggleSpeed,
     canvasWidth,
     canvasHeight,
     onStereogramRendered,
@@ -369,6 +339,26 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
                 </button>
               ))}
             </div>
+          )}
+
+          {/* Hold to Peek in Fullscreen */}
+          {activeTab === 'stereogram' && (
+            <button
+              onMouseDown={() => setIsHoldingPeek(true)}
+              onMouseUp={() => setIsHoldingPeek(false)}
+              onMouseLeave={() => setIsHoldingPeek(false)}
+              onTouchStart={() => setIsHoldingPeek(true)}
+              onTouchEnd={() => setIsHoldingPeek(false)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer border select-none shrink-0 ${
+                isHoldingPeek
+                  ? 'bg-indigo-600 border-indigo-400 text-white shadow-sm shadow-indigo-600/50 scale-95'
+                  : 'bg-slate-800/80 hover:bg-slate-700 border-slate-700/60 text-slate-200 hover:text-white'
+              }`}
+              title="Press and hold to momentarily reveal the hidden 3D depth map"
+            >
+              <Eye className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Hold to Peek</span>
+            </button>
           )}
 
           {/* Guide Dots Toggle in Fullscreen */}
@@ -527,6 +517,26 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
 
             <div className="h-4 w-px bg-slate-800 hidden sm:block" />
 
+            {/* Hold to Peek Button */}
+            {activeTab === 'stereogram' && (
+              <button
+                onMouseDown={() => setIsHoldingPeek(true)}
+                onMouseUp={() => setIsHoldingPeek(false)}
+                onMouseLeave={() => setIsHoldingPeek(false)}
+                onTouchStart={() => setIsHoldingPeek(true)}
+                onTouchEnd={() => setIsHoldingPeek(false)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer border select-none ${
+                  isHoldingPeek
+                    ? 'bg-indigo-600 border-indigo-400 text-white shadow-sm shadow-indigo-600/50 scale-95'
+                    : 'bg-slate-800/80 hover:bg-slate-700 border-slate-700/60 text-slate-200 hover:text-white'
+                }`}
+                title="Press and hold to momentarily reveal the hidden 3D depth map"
+              >
+                <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Hold to Peek</span>
+              </button>
+            )}
+
             {/* Fit Viewport Button */}
             {onFitToViewport && (
               <button
@@ -578,9 +588,10 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
             height={canvasHeight}
             className={
               isFullscreen
-                ? 'w-full h-full object-contain'
+                ? 'w-full h-full block'
                 : 'w-full h-full object-contain rounded-xl shadow-2xl border border-slate-800'
             }
+            style={isFullscreen ? { imageRendering: 'pixelated' } : undefined}
           />
 
           {/* Guide Dots Overlay Indicator */}
@@ -641,76 +652,6 @@ export const StereogramViewport: React.FC<StereogramViewportProps> = ({
           </div>
         )}
       </div>
-
-      {/* Floating Bottom Revealer Toolbar */}
-      {activeTab === 'stereogram' && (
-        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-2xl glass-panel shadow-2xl flex items-center gap-4 border border-white/10 z-10">
-          {/* Hold to Peek Button */}
-          <button
-            onMouseDown={() => setIsHoldingPeek(true)}
-            onMouseUp={() => setIsHoldingPeek(false)}
-            onMouseLeave={() => setIsHoldingPeek(false)}
-            onTouchStart={() => setIsHoldingPeek(true)}
-            onTouchEnd={() => setIsHoldingPeek(false)}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 select-none ${
-              isHoldingPeek
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/50 scale-95'
-                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-200'
-            }`}
-            title="Press and hold to momentarily reveal the hidden 3D depth map"
-          >
-            <Eye className="w-4 h-4 text-indigo-400" />
-            <span>Hold to Peek</span>
-          </button>
-
-          {/* Smooth Peek Slider */}
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-medium text-slate-400">Peek</span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={peekAmount}
-              onChange={(e) => setPeekAmount(parseFloat(e.target.value))}
-              className="w-24 cursor-pointer h-1.5 bg-slate-700 rounded-lg appearance-none"
-              title="Gradually blend between stereogram and depth map"
-            />
-          </div>
-
-          <div className="h-5 w-px bg-slate-800" />
-
-          {/* 3D Wigglegram Toggle */}
-          <button
-            onClick={() => setIsWiggleActive(!isWiggleActive)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-              isWiggleActive
-                ? 'bg-pink-600 text-white shadow-lg shadow-pink-600/50 animate-pulse'
-                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300'
-            }`}
-            title="Motion parallax simulation: wiggles left and right eye perspective to reveal 3D depth instantly in motion!"
-          >
-            <Activity className="w-4 h-4 text-pink-300" />
-            <span>3D Wigglegram {isWiggleActive ? 'ON' : 'OFF'}</span>
-          </button>
-
-          {isWiggleActive && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-slate-400">Speed</span>
-              <input
-                type="range"
-                min="60"
-                max="240"
-                step="20"
-                value={wiggleSpeed}
-                onChange={(e) => setWiggleSpeed(parseInt(e.target.value))}
-                className="w-16 cursor-pointer h-1 bg-slate-700 rounded-lg appearance-none"
-                title="Adjust wiggle oscillation speed"
-              />
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 };
