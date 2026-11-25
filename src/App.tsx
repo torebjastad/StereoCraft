@@ -284,7 +284,11 @@ export const App: React.FC = () => {
   const calculateAvailableArea = useCallback(() => {
     if (typeof window === 'undefined') return { width: 1200, height: 900 };
     if (isStudioFullscreen || Boolean(document.fullscreenElement)) {
-      return { width: window.innerWidth, height: window.innerHeight };
+      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+      return {
+        width: Math.min(5120, Math.max(640, Math.round(window.innerWidth * dpr))),
+        height: Math.min(2880, Math.max(480, Math.round(window.innerHeight * dpr))),
+      };
     }
     // Studio windowed layout: Left sidebar 320px (w-80), Right sidebar 288px (w-72), Header 64px, Viewport tab bar 48px, Padding 32px + 56px bottom toolbar
     const leftW = 320;
@@ -320,6 +324,28 @@ export const App: React.FC = () => {
     [calculateAvailableArea, handleChangeResolution, activeEaseOfView, appMode]
   );
 
+  const syncStudioFullscreenResolution = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const rect = studioContainerRef.current?.getBoundingClientRect();
+    const cssW = rect && rect.width > 0 ? rect.width : window.innerWidth;
+    const cssH = rect && rect.height > 0 ? rect.height : window.innerHeight;
+    const fullW = Math.min(5120, Math.max(640, Math.round(cssW * dpr)));
+    const fullH = Math.min(2880, Math.max(480, Math.round(cssH * dpr)));
+
+    if (dimensionsRef.current.width === fullW && dimensionsRef.current.height === fullH) return;
+
+    handleChangeResolution(fullW, fullH);
+
+    // Optimize optics for native fullscreen pixel width using studioEase, WITHOUT altering grainSize
+    const optics = getAutotuneOptics(fullW, studioEase, 'studio');
+    setConfig((prev) => ({
+      ...prev,
+      patternPeriod: optics.patternPeriod,
+      maxDisparity: optics.maxDisparity,
+    }));
+  }, [handleChangeResolution, studioEase]);
+
   // Studio Fullscreen toggle
   const toggleStudioFullscreen = useCallback(async () => {
     try {
@@ -329,17 +355,7 @@ export const App: React.FC = () => {
           await studioContainerRef.current.requestFullscreen();
         }
         setIsStudioFullscreen(true);
-        const fullW = window.innerWidth;
-        const fullH = window.innerHeight;
-        handleChangeResolution(fullW, fullH);
-
-        // Optimize optics for fullscreen width using studioEase, WITHOUT altering grainSize
-        const optics = getAutotuneOptics(fullW, studioEase, 'studio');
-        setConfig((prev) => ({
-          ...prev,
-          patternPeriod: optics.patternPeriod,
-          maxDisparity: optics.maxDisparity,
-        }));
+        syncStudioFullscreenResolution();
       } else {
         if (document.fullscreenElement && document.exitFullscreen) {
           await document.exitFullscreen();
@@ -361,13 +377,35 @@ export const App: React.FC = () => {
     } catch {
       setIsStudioFullscreen((prev) => !prev);
     }
-  }, [isStudioFullscreen, handleChangeResolution, studioEase]);
+  }, [isStudioFullscreen, handleChangeResolution, studioEase, syncStudioFullscreenResolution]);
+
+  // Keep Studio fullscreen canvas locked to exact native physical fullscreen resolution
+  useEffect(() => {
+    if (!isStudioFullscreen) return;
+    syncStudioFullscreenResolution();
+    const rafId = window.requestAnimationFrame(syncStudioFullscreenResolution);
+    window.addEventListener('resize', syncStudioFullscreenResolution);
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && studioContainerRef.current) {
+      observer = new ResizeObserver(() => {
+        syncStudioFullscreenResolution();
+      });
+      observer.observe(studioContainerRef.current);
+    }
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', syncStudioFullscreenResolution);
+      observer?.disconnect();
+    };
+  }, [isStudioFullscreen, syncStudioFullscreenResolution]);
 
   // Sync with document fullscreenchange events (e.g. user pressing Esc)
   useEffect(() => {
     const onFullscreenChange = () => {
       const isDocFs = Boolean(document.fullscreenElement);
-      if (!isDocFs && isStudioFullscreen) {
+      if (isDocFs && isStudioFullscreen) {
+        syncStudioFullscreenResolution();
+      } else if (!isDocFs && isStudioFullscreen) {
         setIsStudioFullscreen(false);
         if (savedDimensionsRef.current) {
           handleChangeResolution(
@@ -385,7 +423,7 @@ export const App: React.FC = () => {
     };
     document.addEventListener('fullscreenchange', onFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
-  }, [isStudioFullscreen, handleChangeResolution, studioEase]);
+  }, [isStudioFullscreen, handleChangeResolution, studioEase, syncStudioFullscreenResolution]);
 
   // Track window resizing and re-adapt when in Auto-Fit mode
   useEffect(() => {

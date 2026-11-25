@@ -161,27 +161,54 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
   const timerStartRef = useRef<number>(0);
   const animFrameRef = useRef<number>(0);
 
-  // Measure screen resolution for fullscreen mode
+  // Measure native physical pixel resolution of the fullscreen container (exact 1:1, zero upsampling)
+  const measureFullscreenResolution = useCallback(() => {
+    if (typeof window === 'undefined') return { width: 1920, height: 1080 };
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const rect = containerRef.current?.getBoundingClientRect();
+    const cssW = rect && rect.width > 0 ? rect.width : window.innerWidth;
+    const cssH = rect && rect.height > 0 ? rect.height : window.innerHeight;
+    const w = Math.min(5120, Math.max(640, Math.round(cssW * dpr)));
+    const h = Math.min(2880, Math.max(480, Math.round(cssH * dpr)));
+    return { width: w, height: h };
+  }, []);
+
   const [fullscreenDimensions, setFullscreenDimensions] = useState<{ width: number; height: number }>(() => {
     if (typeof window === 'undefined') return { width: 1920, height: 1080 };
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = Math.min(3840, Math.max(1200, Math.round(window.innerWidth * dpr)));
-    const h = Math.min(2160, Math.max(800, Math.round(window.innerHeight * dpr)));
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const w = Math.min(5120, Math.max(640, Math.round(window.screen.width * dpr)));
+    const h = Math.min(2880, Math.max(480, Math.round(window.screen.height * dpr)));
     return { width: w, height: h };
   });
 
-  // Track screen size changes during fullscreen
+  const syncFullscreenDimensions = useCallback(() => {
+    const next = measureFullscreenResolution();
+    setFullscreenDimensions((prev) =>
+      prev.width === next.width && prev.height === next.height ? prev : next
+    );
+  }, [measureFullscreenResolution]);
+
+  // Track exact native screen size changes during fullscreen so stereogram regenerates at 1:1 resolution
   useEffect(() => {
     if (!isFullscreen) return;
-    const handleResize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const w = Math.min(3840, Math.max(1200, Math.round(window.innerWidth * dpr)));
-      const h = Math.min(2160, Math.max(800, Math.round(window.innerHeight * dpr)));
-      setFullscreenDimensions({ width: w, height: h });
+    syncFullscreenDimensions();
+    const rafId = window.requestAnimationFrame(syncFullscreenDimensions);
+
+    window.addEventListener('resize', syncFullscreenDimensions);
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      observer = new ResizeObserver(() => {
+        syncFullscreenDimensions();
+      });
+      observer.observe(containerRef.current);
+    }
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', syncFullscreenDimensions);
+      observer?.disconnect();
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [isFullscreen]);
+  }, [isFullscreen, syncFullscreenDimensions]);
 
   const toggleFullscreen = useCallback(async () => {
     try {
@@ -190,6 +217,7 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
           await containerRef.current.requestFullscreen();
         }
         setIsFullscreen(true);
+        syncFullscreenDimensions();
       } else {
         if (document.fullscreenElement && document.exitFullscreen) {
           await document.exitFullscreen();
@@ -200,13 +228,16 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
       // Fallback to CSS fullscreen
       setIsFullscreen((prev) => !prev);
     }
-  }, [isFullscreen]);
+  }, [isFullscreen, syncFullscreenDimensions]);
 
   // Sync with document fullscreenchange events (e.g. user presses Esc)
   useEffect(() => {
     const onFullscreenChange = () => {
       const isDocFs = Boolean(document.fullscreenElement);
       setIsFullscreen(isDocFs);
+      if (isDocFs) {
+        syncFullscreenDimensions();
+      }
     };
     document.addEventListener('fullscreenchange', onFullscreenChange);
     document.addEventListener('webkitfullscreenchange', onFullscreenChange);
@@ -214,7 +245,7 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
       document.removeEventListener('fullscreenchange', onFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
     };
-  }, []);
+  }, [syncFullscreenDimensions]);
 
   const activeWidth = isFullscreen ? fullscreenDimensions.width : canvasWidth;
   const activeHeight = isFullscreen ? fullscreenDimensions.height : canvasHeight;
@@ -1297,9 +1328,10 @@ export const LabyrinthGame: React.FC<LabyrinthGameProps> = ({
             height={activeHeight}
             className={
               isFullscreen
-                ? 'absolute inset-0 w-full h-full object-cover'
+                ? 'absolute inset-0 w-full h-full block'
                 : 'w-full h-full object-contain rounded-xl shadow-2xl border border-slate-800'
             }
+            style={isFullscreen ? { imageRendering: 'pixelated' } : undefined}
           />
 
           {/* Convergence Guide Dots Indicator */}
