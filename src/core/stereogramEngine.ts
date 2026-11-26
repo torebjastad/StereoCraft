@@ -549,7 +549,7 @@ export function drawGuideDots(
 export function getAutotuneOptics(
   width: number,
   ease: EaseOfView = 'easy',
-  mode: 'studio' | 'labyrinth' = 'studio'
+  mode: 'studio' | 'browser' | 'labyrinth' = 'studio'
 ): { patternPeriod: number; maxDisparity: number } {
   if (mode === 'labyrinth') {
     // In Labyrinth mode, the player tracks a real-time moving 3D cube.

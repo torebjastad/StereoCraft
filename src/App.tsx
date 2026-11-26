@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
+  AppMode,
   ShapeObject,
   ShapeType,
   StereogramConfig,
@@ -14,6 +15,7 @@ import { StereogramViewport } from './components/StereogramViewport.tsx';
 import { SettingsPanel } from './components/SettingsPanel.tsx';
 import { ViewingGuideModal } from './components/ViewingGuideModal.tsx';
 import { LabyrinthGame } from './components/LabyrinthGame.tsx';
+import { DepthmapBrowser, BrowserViewMode } from './components/DepthmapBrowser.tsx';
 import { PrintModal } from './components/PrintModal.tsx';
 import { downloadCanvasAsPng, getStereogramDownloadFilename } from './core/exportUtils.ts';
 
@@ -139,13 +141,19 @@ const getInitialUrlState = () => {
     };
   }
   const params = new URLSearchParams(window.location.search);
-  const mode = params.get('mode') === 'labyrinth' ? ('labyrinth' as const) : ('studio' as const);
+  const modeParam = params.get('mode');
+  const mode: AppMode =
+    modeParam === 'labyrinth'
+      ? 'labyrinth'
+      : modeParam === 'browser'
+      ? 'browser'
+      : 'studio';
   const patternParam = params.get('pattern') as PatternType | null;
   const pattern: PatternType = patternParam || 'sand';
   const easeParam = params.get('ease') as EaseOfView | null;
   const hasValidEase = easeParam === 'easy' || easeParam === 'medium' || easeParam === 'hard';
 
-  const studioEase: EaseOfView = hasValidEase && mode === 'studio' ? easeParam : defaultStudioEase;
+  const studioEase: EaseOfView = hasValidEase && mode !== 'labyrinth' ? easeParam : defaultStudioEase;
   const labyrinthEase: EaseOfView = hasValidEase && mode === 'labyrinth' ? easeParam : defaultLabyrinthEase;
   const easeOfView: EaseOfView = mode === 'labyrinth' ? labyrinthEase : studioEase;
   const grain = getDefaultGrainForPattern(pattern);
@@ -169,11 +177,11 @@ const getInitialUrlState = () => {
   }
 
   // Default: Fit available area!
-  const leftW = 320;
-  const rightW = 288;
-  const topH = 64 + 48;
+  const leftW = mode === 'browser' ? 0 : 320;
+  const rightW = 320;
+  const topH = 64 + 52;
   const paddingX = 32;
-  const paddingY = 56;
+  const paddingY = mode === 'browser' ? 140 : 56;
   const availW = Math.max(480, Math.floor((window.innerWidth - leftW - rightW - paddingX) / 10) * 10);
   const availH = Math.max(360, Math.floor((window.innerHeight - topH - paddingY) / 10) * 10);
   const optics = getAutotuneOptics(availW, easeOfView, mode);
@@ -196,7 +204,8 @@ const getInitialUrlState = () => {
 const initialUrlState = getInitialUrlState();
 
 export const App: React.FC = () => {
-  const [appMode, setAppMode] = useState<'studio' | 'labyrinth'>(initialUrlState.mode);
+  const [appMode, setAppMode] = useState<AppMode>(initialUrlState.mode);
+  const [browserViewMode, setBrowserViewMode] = useState<BrowserViewMode>('grid');
   const [studioEase, setStudioEase] = useState<EaseOfView>(initialUrlState.studioEase);
   const [labyrinthEase, setLabyrinthEase] = useState<EaseOfView>(initialUrlState.labyrinthEase);
   const activeEaseOfView = appMode === 'labyrinth' ? labyrinthEase : studioEase;
@@ -290,16 +299,16 @@ export const App: React.FC = () => {
         height: Math.min(2880, Math.max(480, Math.round(window.innerHeight * dpr))),
       };
     }
-    // Studio windowed layout: Left sidebar 320px (w-80), Right sidebar 288px (w-72), Header 64px, Viewport tab bar 48px, Padding 32px + 56px bottom toolbar
-    const leftW = 320;
-    const rightW = 288;
-    const topH = 64 + 48;
+    // Windowed layout margins per mode
+    const leftW = appMode === 'browser' ? 0 : 320;
+    const rightW = appMode === 'browser' && browserViewMode === 'grid' ? 0 : 320;
+    const topH = 64 + 52;
     const paddingX = 32;
-    const paddingY = 56;
+    const paddingY = appMode === 'browser' ? 140 : 56;
     const availW = Math.max(480, Math.floor((window.innerWidth - leftW - rightW - paddingX) / 10) * 10);
     const availH = Math.max(360, Math.floor((window.innerHeight - topH - paddingY) / 10) * 10);
     return { width: availW, height: availH };
-  }, [isStudioFullscreen]);
+  }, [isStudioFullscreen, appMode, browserViewMode]);
 
   const [availableArea, setAvailableArea] = useState<{ width: number; height: number }>(calculateAvailableArea);
 
@@ -445,9 +454,9 @@ export const App: React.FC = () => {
     };
   }, [isAutoFit, isStudioFullscreen, calculateAvailableArea, handleFitToViewport]);
 
-  // Hotkey 'F' to toggle fullscreen in Studio mode
+  // Hotkey 'F' to toggle fullscreen in Studio and Browser modes
   useEffect(() => {
-    if (appMode !== 'studio') return;
+    if (appMode !== 'studio' && appMode !== 'browser') return;
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (
@@ -940,6 +949,12 @@ export const App: React.FC = () => {
     setIsPrintOpen(true);
   }, []);
 
+  const handleOpenBrowserShapeInStudio = useCallback((shape: ShapeObject) => {
+    setShapes([shape]);
+    setSelectedShapeId(shape.id);
+    setAppMode('studio');
+  }, []);
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 font-sans">
       {/* Top Header */}
@@ -963,7 +978,9 @@ export const App: React.FC = () => {
         onPrint={handleOpenPrint}
         onExportDepth={handleExportDepth}
         onLoadPreset={handleLoadPreset}
-        onToggleFullscreen={appMode === 'studio' ? toggleStudioFullscreen : undefined}
+        onToggleFullscreen={
+          appMode === 'studio' || appMode === 'browser' ? toggleStudioFullscreen : undefined
+        }
         isFullscreen={isStudioFullscreen}
       />
 
@@ -1052,6 +1069,49 @@ export const App: React.FC = () => {
 
           {/* Right Column: Optics, Disparity, Resolution & Engine Controls */}
           {!isStudioFullscreen && (
+            <SettingsPanel
+              config={config}
+              onChangeConfig={(upd) => setConfig((prev) => ({ ...prev, ...upd }))}
+              canvasWidth={dimensions.width}
+              canvasHeight={dimensions.height}
+              onChangeResolution={handleChangeFixedResolution}
+              onFitToViewport={() => handleFitToViewport()}
+              isAutoFit={isAutoFit}
+              availableArea={availableArea}
+              easeOfView={studioEase}
+              onSelectEaseOfView={handleSelectEaseOfView}
+              mode="studio"
+              onExport={handleExportStereogram}
+              onPrint={handleOpenPrint}
+            />
+          )}
+        </main>
+      ) : appMode === 'browser' ? (
+        /* Depthmap Folder Browser & Slideshow Mode */
+        <main ref={studioContainerRef} className="flex-1 flex overflow-hidden relative">
+          <DepthmapBrowser
+            config={config}
+            canvasWidth={dimensions.width}
+            canvasHeight={dimensions.height}
+            onChangeConfig={(upd) => setConfig((prev) => ({ ...prev, ...upd }))}
+            easeOfView={studioEase}
+            onSelectEaseOfView={handleSelectEaseOfView}
+            onStereogramRendered={(canvas) => {
+              stereogramCanvasRef.current = canvas;
+            }}
+            onDepthRendered={(canvas) => {
+              depthCanvasRef.current = canvas;
+            }}
+            isFullscreen={isStudioFullscreen}
+            onToggleFullscreen={toggleStudioFullscreen}
+            onFitToViewport={handleFitToViewport}
+            isAutoFit={isAutoFit}
+            onExport={handleExportStereogram}
+            onPrint={handleOpenPrint}
+            onOpenInStudio={handleOpenBrowserShapeInStudio}
+            onViewModeChange={setBrowserViewMode}
+          />
+          {!isStudioFullscreen && browserViewMode === 'slideshow' && (
             <SettingsPanel
               config={config}
               onChangeConfig={(upd) => setConfig((prev) => ({ ...prev, ...upd }))}

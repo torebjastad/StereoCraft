@@ -1,3 +1,5 @@
+export type AppMode = 'studio' | 'browser' | 'labyrinth';
+
 export type ShapeType = 'circle' | 'square' | 'triangle' | 'star' | 'text' | 'image';
 
 export type DepthProfileType = 'flat' | 'dome' | 'pyramid' | 'beveled';
@@ -64,3 +66,18 @@ export interface CanvasDimensions {
 }
 
 export type RevealMode = 'none' | 'peek' | 'wiggle' | 'mesh3d';
+
+export interface DepthmapEntry {
+  id: string;
+  name: string;
+  fileName: string;
+  relativePath: string;
+  url: string;
+  source: 'project' | 'local';
+}
+
+export interface DecodedDepthmap {
+  data: Uint8ClampedArray;
+  width: number;
+  height: number;
+}

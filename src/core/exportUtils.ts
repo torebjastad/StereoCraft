@@ -5,7 +5,7 @@
 
 export interface ExportFilenameOptions {
   patternType?: string;
-  appMode?: 'studio' | 'labyrinth';
+  appMode?: 'studio' | 'browser' | 'labyrinth';
   width: number;
   height: number;
   level?: number;

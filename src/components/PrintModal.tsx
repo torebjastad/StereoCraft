@@ -8,7 +8,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { printStereogram, downloadCanvasAsPng, getStereogramDownloadFilename } from '../core/exportUtils.ts';
-import { StereogramConfig } from '../types/index.ts';
+import { AppMode, StereogramConfig } from '../types/index.ts';
 
 interface PrintModalProps {
   isOpen: boolean;
@@ -17,7 +17,7 @@ interface PrintModalProps {
   depthCanvas?: HTMLCanvasElement | null;
   config: StereogramConfig;
   dimensions: { width: number; height: number };
-  appMode: 'studio' | 'labyrinth';
+  appMode: AppMode;
   labyrinthLevel?: number;
   onDownloadPNG?: () => void;
 }
